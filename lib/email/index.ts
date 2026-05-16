@@ -1,4 +1,5 @@
 import { withRetry } from "@/lib/utils/retry";
+import { getRedisClient } from "@/lib/redis/client";
 
 /** Email message payload */
 export interface EmailMessage {
@@ -18,62 +19,62 @@ export interface AlertDigestItem {
   alertUrl: string;
 }
 
-/** Send via Resend */
-async function sendViaResend(email: EmailMessage): Promise<void> {
-  const response = await fetch("https://api.resend.com/emails", {
+/**
+ * Send via Mailgun.
+ * Idempotency is enforced via Redis — duplicate sends with the same key are silently skipped.
+ * Mailgun does not have a native idempotency key param, so we track it ourselves.
+ */
+async function sendViaMailgun(email: EmailMessage): Promise<void> {
+  const domain = process.env.MAILGUN_DOMAIN;
+  const apiKey = process.env.MAILGUN_API_KEY;
+
+  if (!domain || !apiKey) throw new Error("Mailgun credentials not configured (MAILGUN_DOMAIN, MAILGUN_API_KEY)");
+
+  // Redis idempotency check — skip if already sent
+  const redis = getRedisClient();
+  const sentKey = `email:sent:${email.idempotencyKey}`;
+  try {
+    const alreadySent = await redis.get(sentKey);
+    if (alreadySent) return;
+  } catch {
+    // Redis unavailable — proceed without idempotency guard
+  }
+
+  const formData = new URLSearchParams();
+  formData.append("from", process.env.EMAIL_FROM ?? "EpiRadar Alerts <alerts@epiradar.io>");
+  formData.append("to", email.to);
+  formData.append("subject", email.subject);
+  formData.append("html", email.html);
+
+  const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Idempotency-Key": email.idempotencyKey,
+      Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM ?? "alerts@epiradar.io",
-      to: email.to,
-      subject: email.subject,
-      html: email.html,
-    }),
+    body: formData.toString(),
   });
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Resend error ${response.status}: ${body}`);
+    throw new Error(`Mailgun error ${response.status}: ${body}`);
   }
-}
 
-/** Send via Postmark */
-async function sendViaPostmark(email: EmailMessage): Promise<void> {
-  const response = await fetch("https://api.postmarkapp.com/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Postmark-Server-Token": process.env.POSTMARK_SERVER_TOKEN!,
-      "X-Idempotency-Key": email.idempotencyKey,
-    },
-    body: JSON.stringify({
-      From: process.env.EMAIL_FROM ?? "alerts@epiradar.io",
-      To: email.to,
-      Subject: email.subject,
-      HtmlBody: email.html,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Postmark error ${response.status}`);
+  // Mark as sent — TTL 25h covers daily digest window without blocking next day's send
+  try {
+    await redis.set(sentKey, "1", "EX", 90000);
+  } catch {
+    // Non-fatal if Redis write fails — worst case is a duplicate email on re-run
   }
 }
 
 /**
- * Send an email via the configured provider (Resend or Postmark).
- * Selected via EMAIL_PROVIDER env var. Retries on transient failures.
+ * Send an email via Mailgun.
+ * Retries up to 3 times on transient failures with exponential backoff.
+ * Idempotency is enforced via Redis — safe to call on CRON re-runs.
  */
 export async function sendEmail(email: EmailMessage): Promise<void> {
-  const provider = process.env.EMAIL_PROVIDER ?? "resend";
-
-  await withRetry(
-    () => (provider === "postmark" ? sendViaPostmark(email) : sendViaResend(email)),
-    { maxAttempts: 3, baseDelayMs: 500 },
-  );
+  await withRetry(() => sendViaMailgun(email), { maxAttempts: 3, baseDelayMs: 500 });
 }
 
 /** Build an HTML alert digest email for a user's watchlist */

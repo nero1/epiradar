@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
   const byUser = new Map<string, { email: string; name: string; watches: Watchlist[] }>();
   for (const wl of (watchlists ?? [])) {
     const u = wl.users;
-    // Skip soft-deleted users
-    if (!u || u.deleted_at) continue;
+    // Skip soft-deleted users and non-paid users (email is paid-only)
+    if (!u || u.deleted_at || u.plan !== "paid") continue;
 
     if (!byUser.has(wl.user_id)) {
       byUser.set(wl.user_id, {
