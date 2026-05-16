@@ -33,3 +33,8 @@ Bootstrapped the full Next.js 16 (App Router) + TypeScript project from scratch.
 Progress: 17%
 
 ---
+[Phase 2][Data Ingestion and AI Pipeline]
+Built the complete data ingestion engine and AI scoring pipeline. Created `lib/ingestion/sources.ts` with parallel fetchers for all 5 data sources (WHO RSS, ProMED RSS, ReliefWeb API, PubMed NCBI, Google News RSS) — each with exponential backoff retries and graceful failure isolation. Implemented SHA-256 content hash deduplication so re-runs skip already-ingested items (idempotent). Built `lib/ai/pipeline.ts` with a DeepSeek primary / Gemini Flash fallback scoring pipeline: each alert is classified for relevance, scored 0–100 on severity/spread/novelty, entity-extracted (country ISO, pathogen, case/death counts), and summarised in plain English. All AI output is Zod schema-validated to prevent prompt injection from corrupting the database. Built `lib/ingestion/run.ts` as the orchestration layer that logs each run to `ingestion_runs`, processes items in batches of 5, and handles race conditions on duplicate inserts. Created `/api/cron/ingest` (secured with CRON_SECRET) and `/api/admin/ingest` (admin-only manual trigger). Added `vercel.json` with daily CRON schedule. 12 unit tests pass including AI fallback, schema validation, and source error isolation.
+Progress: 33%
+
+---
