@@ -1,4 +1,5 @@
 import { fetchWithTimeout, withRetry } from "@/lib/utils/retry";
+import { assertAllowedUrl } from "@/lib/utils/safeFetch";
 import crypto from "crypto";
 
 /** Raw item fetched from a data source before AI processing */
@@ -56,8 +57,10 @@ async function parseRssFeed(xml: string, source: RawAlert["source"]): Promise<Ra
 /** WHO Disease Outbreak News RSS feed */
 export async function fetchWHOAlerts(): Promise<RawAlert[]> {
   return withRetry(async () => {
+    const url = "https://www.who.int/rss-feeds/news-releases.xml";
+    assertAllowedUrl(url);
     const response = await fetchWithTimeout(
-      "https://www.who.int/rss-feeds/news-releases.xml",
+      url,
       {},
       15_000,
     );
@@ -72,8 +75,10 @@ export async function fetchWHOAlerts(): Promise<RawAlert[]> {
 /** ProMED-mail alert RSS feed */
 export async function fetchProMEDAlerts(): Promise<RawAlert[]> {
   return withRetry(async () => {
+    const url = "https://promedmail.org/feed/";
+    assertAllowedUrl(url);
     const response = await fetchWithTimeout(
-      "https://promedmail.org/feed/",
+      url,
       {},
       15_000,
     );
@@ -88,6 +93,7 @@ export async function fetchProMEDAlerts(): Promise<RawAlert[]> {
 /** ReliefWeb health situation reports API */
 export async function fetchReliefWebAlerts(): Promise<RawAlert[]> {
   return withRetry(async () => {
+    assertAllowedUrl("https://api.reliefweb.int/v1/reports");
     const response = await fetchWithTimeout(
       "https://api.reliefweb.int/v1/reports?" +
         new URLSearchParams({
@@ -132,6 +138,7 @@ export async function fetchReliefWebAlerts(): Promise<RawAlert[]> {
 /** PubMed new publications matching outbreak-related MeSH terms */
 export async function fetchPubMedAlerts(): Promise<RawAlert[]> {
   return withRetry(async () => {
+    assertAllowedUrl("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi");
     // Search for recent outbreak-related publications
     const searchResponse = await fetchWithTimeout(
       "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?" +
@@ -204,6 +211,7 @@ export async function fetchGoogleNewsAlerts(): Promise<RawAlert[]> {
   const results = await Promise.allSettled(
     queries.map(async (q) => {
       return withRetry(async () => {
+        assertAllowedUrl("https://news.google.com/rss/search");
         const response = await fetchWithTimeout(
           `https://news.google.com/rss/search?q=${encodeURIComponent(q)}+when:3d&hl=en-US&gl=US&ceid=US:en`,
           {},

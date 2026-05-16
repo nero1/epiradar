@@ -93,6 +93,26 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_log (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Saved AI-generated situation reports (paid tier)
+CREATE TABLE IF NOT EXISTS public.reports (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  country_iso     TEXT,
+  pathogen        TEXT,
+  content         TEXT NOT NULL,
+  based_on_alerts INTEGER NOT NULL DEFAULT 0,
+  generated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Export activity log (PDF and CSV) — used for admin volume monitoring
+CREATE TABLE IF NOT EXISTS public.export_logs (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  export_type TEXT NOT NULL CHECK (export_type IN ('pdf', 'csv')),
+  alert_id    UUID REFERENCES public.alerts(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -107,6 +127,10 @@ CREATE INDEX IF NOT EXISTS idx_ingestion_runs_started_at ON public.ingestion_run
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
 CREATE INDEX IF NOT EXISTS idx_users_plan ON public.users (plan);
 CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON public.users (api_key_hash) WHERE api_key_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reports_user_id ON public.reports (user_id);
+CREATE INDEX IF NOT EXISTS idx_reports_generated_at ON public.reports (generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_export_logs_user_id ON public.export_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_export_logs_created_at ON public.export_logs (created_at DESC);
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -166,6 +190,34 @@ CREATE POLICY "admin_audit_log_admin_read" ON public.admin_audit_log
     EXISTS (
       SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.is_admin = TRUE
     )
+  );
+
+-- Reports: users manage their own; admins can read all
+ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "reports_select_own" ON public.reports
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "reports_insert_own" ON public.reports
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "reports_admin_read" ON public.reports
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.is_admin = TRUE)
+  );
+
+-- Export logs: users see their own; admins see all
+ALTER TABLE public.export_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "export_logs_select_own" ON public.export_logs
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "export_logs_insert_own" ON public.export_logs
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "export_logs_admin_read" ON public.export_logs
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.is_admin = TRUE)
   );
 
 -- ============================================================

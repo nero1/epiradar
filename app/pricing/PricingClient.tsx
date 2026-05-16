@@ -6,15 +6,8 @@ import type { Plan } from "@/lib/supabase/types";
 interface Props {
   currentPlan: Plan | "public";
   isAuthenticated: boolean;
-}
-
-// Detect if user is likely in Nigeria based on browser timezone heuristic
-function isNigeriaLikely(): boolean {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone === "Africa/Lagos";
-  } catch {
-    return false;
-  }
+  /** Server-side IP geolocation result — true when user's IP resolves to Nigeria (NG). */
+  isNigeria: boolean;
 }
 
 const FREE_FEATURES = [
@@ -43,10 +36,10 @@ const PUBLIC_FEATURES = [
   "No sign-up required",
 ];
 
-export default function PricingClient({ currentPlan, isAuthenticated }: Props) {
+export default function PricingClient({ currentPlan, isAuthenticated, isNigeria }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const nigeria = isNigeriaLikely();
+  const nigeria = isNigeria;
 
   async function handleUpgrade() {
     if (!isAuthenticated) {

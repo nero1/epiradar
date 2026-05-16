@@ -10,10 +10,20 @@ const UpgradeSchema = z.object({
   provider: z.enum(["paystack", "dodopayments"]),
 });
 
+/** Resolve provider from server-side IP headers, overriding client hint when possible. */
+function resolveProvider(request: NextRequest, clientProvider: "paystack" | "dodopayments"): "paystack" | "dodopayments" {
+  const country =
+    (request.headers.get("cf-ipcountry") ?? request.headers.get("x-vercel-ip-country") ?? "").toUpperCase();
+  if (country === "NG") return "paystack";
+  if (country && country !== "NG") return "dodopayments";
+  // No IP country header available (local dev / unknown) — trust the client
+  return clientProvider;
+}
+
 /**
  * POST /api/v1/billing/upgrade — initiate a plan upgrade checkout session.
- * Returns a redirect URL to the payment provider.
- * Provider is explicit in request body — client selects based on user's region.
+ * Provider is resolved from IP geolocation headers (Cloudflare / Vercel).
+ * Client-supplied provider is used only when no IP header is present.
  */
 export async function POST(request: NextRequest) {
   let user;
@@ -33,10 +43,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const provider = resolveProvider(request, parsed.data.provider);
   const idempotencyKey = randomUUID();
 
   try {
-    if (parsed.data.provider === "paystack") {
+    if (provider === "paystack") {
       const { authorizationUrl, reference } = await initiatePaystackPayment({
         email: user.email,
         userId: user.id,

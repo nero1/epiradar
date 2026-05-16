@@ -28,6 +28,11 @@ interface Stats {
     sourceHealth: SourceHealth[];
   };
   aiPipeline: AiPipeline;
+  exports: {
+    today: number;
+    thisWeek: number;
+    byType: { pdf: number; csv: number };
+  };
   users: { free: number; paid: number };
 }
 
@@ -212,6 +217,17 @@ export default function AdminClient() {
                 {statBox("Alerts (7d)", stats.ingestion.alertsThisWeek)}
                 {statBox("Free Users", stats.users.free)}
                 {statBox("Paid Users", stats.users.paid)}
+              </div>
+
+              {/* Export volume */}
+              <div style={card}>
+                <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Export Volume</h2>
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Exports today: </span><strong>{stats.exports?.today ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Exports (7d): </span><strong>{stats.exports?.thisWeek ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>PDF (7d): </span><strong>{stats.exports?.byType?.pdf ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>CSV (7d): </span><strong>{stats.exports?.byType?.csv ?? 0}</strong></div>
+                </div>
               </div>
 
               {/* AI Pipeline stats */}

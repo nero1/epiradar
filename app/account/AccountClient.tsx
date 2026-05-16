@@ -330,6 +330,36 @@ export default function AccountClient({ user }: Props) {
       {/* Security tab */}
       {tab === "security" && (
         <>
+          {/* 2FA encouragement banner for paid users who haven't set it up (PRD §4.4) */}
+          {user.plan === "paid" && !user.totp_secret && (
+            <div style={{
+              marginBottom: 16,
+              padding: "14px 18px",
+              borderRadius: 8,
+              background: "#FEF3C7",
+              border: "1px solid #F59E0B",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+            }}>
+              <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>⚠</span>
+              <div>
+                <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 13, color: "#92400E" }}>
+                  Secure your paid account with two-factor authentication
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: "#92400E" }}>
+                  Your account has access to sensitive data and API keys. Enable 2FA below to protect it.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab("security")}
+                style={{ marginLeft: "auto", flexShrink: 0, background: "#F59E0B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                Set up 2FA ↓
+              </button>
+            </div>
+          )}
+
           <div style={cardStyle}>
             <h2 style={{ margin: "0 0 16px", fontSize: 16, color: "var(--text-primary)" }}>Change Password</h2>
             <div style={{ marginBottom: 12 }}>

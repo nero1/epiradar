@@ -1,5 +1,6 @@
 import { AI_MODELS, AI_TIMEOUT_MS, RELEVANCE_THRESHOLD } from "./models";
 import { withRetry, fetchWithTimeout } from "@/lib/utils/retry";
+import { assertAllowedUrl } from "@/lib/utils/safeFetch";
 import { z } from "zod";
 import type { RawAlert } from "@/lib/ingestion/sources";
 
@@ -60,6 +61,7 @@ Respond with JSON only:`;
 
 /** Call DeepSeek API for scoring */
 async function callDeepSeek(prompt: string): Promise<string> {
+  assertAllowedUrl("https://api.deepseek.com/chat/completions");
   const response = await fetchWithTimeout(
     "https://api.deepseek.com/chat/completions",
     {
@@ -87,6 +89,7 @@ async function callDeepSeek(prompt: string): Promise<string> {
 
 /** Call Gemini Flash API as fallback */
 async function callGemini(prompt: string): Promise<string> {
+  assertAllowedUrl("https://generativelanguage.googleapis.com/v1beta/models");
   const response = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.fallback}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {

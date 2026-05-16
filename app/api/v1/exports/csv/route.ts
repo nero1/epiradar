@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { rateLimitExport } from "@/lib/ratelimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
+
 /**
  * POST /api/v1/exports/csv — export alerts as CSV. Paid tier only.
  * Rate limited: 10/hour/user.
@@ -90,6 +91,14 @@ export async function POST(request: NextRequest) {
   ].join("\n");
 
   const filename = `epiradar-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+
+  // Log export for admin volume monitoring (non-fatal if it fails)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (supabase as any)
+    .from("export_logs")
+    .insert({ user_id: user.id, export_type: "csv", alert_id: null })
+    .then(() => {})
+    .catch(() => {});
 
   return new NextResponse(csvRows, {
     headers: {

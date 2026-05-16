@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/session";
+import { createAdminClient } from "@/lib/supabase/server";
 import { getAlertById } from "@/lib/data/alerts";
 import { checkAndDecrementPdfQuota, generateAlertPdfHtml, getRemainingQuota } from "@/lib/export/pdf";
 import { rateLimitExport } from "@/lib/ratelimit";
@@ -76,6 +77,15 @@ export async function POST(request: NextRequest) {
   }
 
   const { html, filename } = generateAlertPdfHtml(alert);
+
+  // Log export for admin volume monitoring (non-fatal if it fails)
+  const supabase = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (supabase as any)
+    .from("export_logs")
+    .insert({ user_id: user.id, export_type: "pdf", alert_id: alertId })
+    .then(() => {})
+    .catch(() => {});
 
   return new NextResponse(html, {
     headers: {
