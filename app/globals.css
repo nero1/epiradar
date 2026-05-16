@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   CSS Variable Foundation — Light / Dark / Custom Themes
+   All theming goes through these variables.
+   Admin can override these per-theme via the admin panel.
+   ============================================================ */
+
+:root {
+  /* Backgrounds */
+  --bg-page: #F9FAFB;
+  --bg-card: #FFFFFF;
+  --bg-nav: #FFFFFF;
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+
+  /* Borders */
+  --border-default: #E5E7EB;
+
+  /* Brand */
+  --brand-green: #1A5C4A;
+  --brand-amber: #D97706;
+  --brand-critical: #DC2626;
+
+  /* Risk levels */
+  --risk-low: #16A34A;
+  --risk-moderate: #D97706;
+  --risk-high: #EA580C;
+  --risk-critical: #DC2626;
+
+  /* Navbar height */
+  --nav-height: 64px;
+
+  /* Bottom toolbar height (mobile) */
+  --toolbar-height: 64px;
+}
+
+.dark {
+  --bg-page: #0F1117;
+  --bg-card: #1A1D27;
+  --bg-nav: #161923;
+
+  --text-primary: #F3F4F6;
+  --text-secondary: #D1D5DB;
+  --text-muted: #9CA3AF;
+
+  --border-default: #2D3748;
+
+  --brand-green: #2A7A63;
+  --brand-amber: #F59E0B;
+  --brand-critical: #EF4444;
+}
+
+/* High-contrast theme (example custom admin theme) */
+[data-theme="high-contrast"] {
+  --bg-page: #000000;
+  --bg-card: #0A0A0A;
+  --bg-nav: #000000;
+  --text-primary: #FFFFFF;
+  --text-secondary: #F0F0F0;
+  --text-muted: #D0D0D0;
+  --border-default: #555555;
+}
+
+/* ============================================================
+   Base Styles
+   ============================================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure bottom toolbar clearance on mobile */
+@media (max-width: 768px) {
+  main {
+    padding-bottom: var(--toolbar-height);
+  }
+}
+
+/* ============================================================
+   Risk Badge Colors
+   ============================================================ */
+
+.risk-badge-low {
+  background-color: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #86EFAC;
+}
+
+.dark .risk-badge-low {
+  background-color: #14532D;
+  color: #86EFAC;
+  border-color: #166534;
+}
+
+.risk-badge-moderate {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FCD34D;
+}
+
+.dark .risk-badge-moderate {
+  background-color: #451A03;
+  color: #FCD34D;
+  border-color: #78350F;
+}
+
+.risk-badge-high {
+  background-color: #FFEDD5;
+  color: #9A3412;
+  border: 1px solid #FDBA74;
+}
+
+.dark .risk-badge-high {
+  background-color: #431407;
+  color: #FDBA74;
+  border-color: #7C2D12;
+}
+
+.risk-badge-critical {
+  background-color: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FCA5A5;
+}
+
+.dark .risk-badge-critical {
+  background-color: #450A0A;
+  color: #FCA5A5;
+  border-color: #7F1D1D;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+}
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
