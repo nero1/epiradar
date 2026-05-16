@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/server";
 import { authenticator } from "otplib";
+import { decryptSecret, encryptSecret } from "@/lib/utils/crypto";
 import { z } from "zod";
 
 const VerifySchema = z.object({
@@ -29,17 +30,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No pending 2FA setup found" }, { status: 409 });
   }
 
-  const secret = storedSecret.replace("pending:", "");
+  // Decrypt the stored secret — it was encrypted in setup step
+  const encryptedPart = storedSecret.replace("pending:", "");
+  let secret: string;
+  try {
+    secret = decryptSecret(encryptedPart);
+  } catch {
+    return NextResponse.json({ error: "Failed to read 2FA secret — please restart setup" }, { status: 500 });
+  }
+
   const isValid = authenticator.verify({ token: parsed.data.token, secret });
   if (!isValid) {
     return NextResponse.json({ error: "Invalid token" }, { status: 400 });
   }
 
-  // Activate — store without the pending: prefix
+  // Activate — store encrypted without the pending: prefix
   const supabase = createAdminClient();
   const { error } = await supabase
     .from("users")
-    .update({ totp_secret: secret })
+    .update({ totp_secret: encryptSecret(secret) })
     .eq("id", user.id);
 
   if (error) return NextResponse.json({ error: "Failed to activate 2FA" }, { status: 500 });

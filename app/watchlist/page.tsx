@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import Header from "@/components/layout/Header";
 import BottomToolbar from "@/components/layout/BottomToolbar";
 import WatchlistClient from "./WatchlistClient";
+import ThemeProvider from "@/components/ThemeProvider";
 import type { Watchlist } from "@/lib/supabase/types";
 
 export const metadata: Metadata = { title: "Watchlist — EpiRadar" };
@@ -25,6 +26,7 @@ export default async function WatchlistPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
+      <ThemeProvider />
       <Header />
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>

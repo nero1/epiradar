@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import type { Watchlist, WatchlistType, AlertMode, Plan } from "@/lib/supabase/types";
+import { useOnlineStatus } from "@/lib/hooks/useOnlineStatus";
 
 interface Props {
   initialWatchlists: Watchlist[];
   plan: Plan;
+}
+
+interface QueuedOp {
+  kind: "add";
+  type: WatchlistType;
+  value: string;
+  alertMode: AlertMode;
 }
 
 const FREE_LIMIT = 3;
@@ -27,31 +35,62 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
   const [value, setValue] = useState("");
   const [alertMode, setAlertMode] = useState<AlertMode>("daily");
   const [error, setError] = useState("");
+  const [offlineMsg, setOfflineMsg] = useState("");
   const [isPending, startTransition] = useTransition();
+  const isOnline = useOnlineStatus();
+  const queuedOp = useRef<QueuedOp | null>(null);
 
   const atLimit = plan === "free" && items.length >= FREE_LIMIT;
 
-  async function handleAdd() {
-    if (!value.trim()) { setError("Please enter a value."); return; }
-    setError("");
+  // Auto-retry queued add when back online
+  useEffect(() => {
+    if (isOnline && queuedOp.current) {
+      const op = queuedOp.current;
+      queuedOp.current = null;
+      setOfflineMsg("Back online — saving watchlist item…");
+      doAdd(op.type, op.value, op.alertMode);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
 
+  async function doAdd(t: WatchlistType, v: string, mode: AlertMode) {
     startTransition(async () => {
       const res = await fetch("/api/v1/watchlists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, value: value.trim(), alert_mode: alertMode }),
+        body: JSON.stringify({ type: t, value: v.trim(), alert_mode: mode }),
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
         setItems((prev) => [...prev, body.data as Watchlist]);
         setValue("");
+        setOfflineMsg("");
       } else {
         setError(body.error ?? "Failed to add.");
+        setOfflineMsg("");
       }
     });
   }
 
+  async function handleAdd() {
+    if (!value.trim()) { setError("Please enter a value."); return; }
+    setError("");
+    setOfflineMsg("");
+
+    if (!isOnline) {
+      queuedOp.current = { kind: "add", type, value, alertMode };
+      setOfflineMsg("Queued — will save when back online.");
+      return;
+    }
+
+    await doAdd(type, value, alertMode);
+  }
+
   async function handleDelete(id: string) {
+    if (!isOnline) {
+      setOfflineMsg("Cannot remove while offline. Will be available when back online.");
+      return;
+    }
     startTransition(async () => {
       const res = await fetch(`/api/v1/watchlists?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (res.ok) {
@@ -86,6 +125,21 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
       <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
         Get notified when new alerts match your watchlist. Free accounts can add up to 3 items.
       </p>
+
+      {/* Offline queue message */}
+      {offlineMsg && (
+        <div style={{
+          background: "#FFFBEB",
+          border: "1px solid #FCD34D",
+          borderRadius: 8,
+          padding: "10px 16px",
+          marginBottom: 16,
+          fontSize: 13,
+          color: "#92400E",
+        }}>
+          {offlineMsg}
+        </div>
+      )}
 
       {/* Add form */}
       {!atLimit ? (
@@ -123,7 +177,7 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
               onClick={handleAdd}
               disabled={isPending || !value.trim()}
               style={{
-                background: "var(--color-brand)",
+                background: !isOnline ? "#D97706" : "var(--color-brand)",
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
@@ -134,7 +188,7 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
                 opacity: isPending ? 0.7 : 1,
               }}
             >
-              Add
+              {!isOnline ? "Queue" : "Add"}
             </button>
           </div>
           {error && <p style={{ fontSize: 13, color: "#DC2626", margin: 0 }}>{error}</p>}

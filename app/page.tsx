@@ -7,6 +7,7 @@ import AlertTicker from "@/components/dashboard/AlertTicker";
 import RiskTrendChart from "@/components/dashboard/RiskTrendChart";
 import RiskMapClient from "@/components/dashboard/RiskMapClient";
 import { getTopAlerts, getCountryRiskScores, getGlobalRiskTrend } from "@/lib/data/alerts";
+import ThemeProvider from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "EpiRadar — Infectious Disease Early Warning Dashboard",
@@ -45,6 +46,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
+      <ThemeProvider />
       <Header />
       <OfflineBanner />
 

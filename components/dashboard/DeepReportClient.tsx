@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useOnlineStatus } from "@/lib/hooks/useOnlineStatus";
 
 interface Props {
   countryIso?: string;
@@ -9,14 +10,28 @@ interface Props {
 
 /**
  * On-demand deep AI report generator for paid users.
- * Calls POST /api/v1/reports and streams the markdown response.
+ * Calls POST /api/v1/reports and renders the markdown response.
+ * Offline-aware: queues the request and retries automatically when back online.
  */
 export default function DeepReportClient({ countryIso, pathogen }: Props) {
   const [report, setReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false);
+  const isOnline = useOnlineStatus();
+  const queuedRef = useRef(false);
 
-  async function generateReport() {
+  // Auto-retry when connection is restored
+  useEffect(() => {
+    if (isOnline && queuedRef.current) {
+      queuedRef.current = false;
+      setQueued(false);
+      doGenerate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
+
+  async function doGenerate() {
     setLoading(true);
     setError(null);
     setReport(null);
@@ -41,6 +56,16 @@ export default function DeepReportClient({ countryIso, pathogen }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function generateReport() {
+    if (!isOnline) {
+      queuedRef.current = true;
+      setQueued(true);
+      setError(null);
+      return;
+    }
+    await doGenerate();
   }
 
   const card: React.CSSProperties = {
@@ -81,7 +106,30 @@ export default function DeepReportClient({ countryIso, pathogen }: Props) {
         </span>
       </div>
 
-      {!report && !loading && (
+      {/* Offline queued state */}
+      {queued && (
+        <div style={{
+          background: "#FFFBEB",
+          border: "1px solid #FCD34D",
+          borderRadius: 8,
+          padding: "12px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          color: "#92400E",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          Queued — report will generate automatically when back online.
+        </div>
+      )}
+
+      {!report && !loading && !queued && (
         <button
           onClick={generateReport}
           style={{

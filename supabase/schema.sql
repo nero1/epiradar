@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS public.users (
   plan_expires_at TIMESTAMPTZ,
   pdf_export_count INTEGER NOT NULL DEFAULT 0,
   pdf_export_reset_at DATE,
-  api_key_hash    TEXT,
+  api_key_hash        TEXT,
+  api_key_last_used_at TIMESTAMPTZ,
   totp_secret     TEXT, -- encrypted at application level before storage
   pin_hash        TEXT,
+  preferred_theme TEXT,          -- name of an admin-defined theme, or null for global default
   is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
   deleted_at      TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -104,6 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_watchlists_user_id ON public.watchlists (user_id)
 CREATE INDEX IF NOT EXISTS idx_ingestion_runs_started_at ON public.ingestion_runs (started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
 CREATE INDEX IF NOT EXISTS idx_users_plan ON public.users (plan);
+CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON public.users (api_key_hash) WHERE api_key_hash IS NOT NULL;
 
 -- ============================================================
 -- ROW LEVEL SECURITY

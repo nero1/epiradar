@@ -38,8 +38,10 @@ export interface User {
   pdf_export_count: number;
   pdf_export_reset_at: string | null;
   api_key_hash: string | null;
+  api_key_last_used_at: string | null;
   totp_secret: string | null;
   pin_hash: string | null;
+  preferred_theme: string | null;
   is_admin: boolean;
   deleted_at: string | null;
   created_at: string;
