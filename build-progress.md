@@ -64,3 +64,11 @@ Addressed all 19 gaps identified in the PRD analysis. Email provider switched fr
 Progress: 100%
 
 ---
+
+[Phase 8][Final PRD Gap Closure — 9 Remaining Gaps]
+Closed all 9 remaining gaps identified in the PRD vs codebase analysis. (1) Reports persistence: added `reports` table with RLS; POST /api/v1/reports now saves every generated report to DB; new GET /api/v1/reports lists saved reports with cursor pagination. (2) Hard-delete CRON: new `/api/cron/hard-delete` purges soft-deleted accounts older than 30 days via Supabase auth.admin.deleteUser, scheduled daily at 03:00 UTC. (3) IP geolocation: pricing page reads CF-IPCountry / X-Vercel-IP-Country headers server-side and passes `isNigeria` prop to PricingClient, replacing the unreliable Intl timezone heuristic; billing/upgrade route independently enforces the same IP check. (4) SSRF allowlist: new `lib/utils/safeFetch.ts` with `assertAllowedUrl()` and explicit hostname allowlist; all 5 ingestion sources and both AI provider callers now assert before fetching. (5) Admin export volume: new `export_logs` table logged on every PDF and CSV export; admin stats API returns today/7d counts and PDF-vs-CSV breakdown; AdminClient displays an Export Volume card. (6) CSP hardening: `unsafe-eval` removed from Content-Security-Policy in production builds (`NODE_ENV=production`) via conditional array in next.config.ts. (7) Telegram auth scaffold: `lib/auth/telegram.ts` with HMAC-SHA256 verifyTelegramAuth() + 24h replay protection; `TelegramLoginButton` client component gated behind NEXT_PUBLIC_ENABLE_TELEGRAM_AUTH env flag. (8) Paid 2FA prompt: amber warning banner added to Account > Security tab for paid users without TOTP, directing them to set up 2FA. TypeScript: clean (0 errors). All changes pushed to branch.
+Progress: 100%
+
+---
+
+---
