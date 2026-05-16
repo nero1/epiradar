@@ -14,8 +14,13 @@ export function getRedisClient(): Redis {
   const provider = process.env.REDIS_PROVIDER ?? "upstash";
 
   if (provider === "upstash") {
-    // Upstash Redis uses standard Redis protocol — ioredis compatible
-    redisInstance = new Redis(process.env.UPSTASH_REDIS_URL!, {
+    const redisUrl = process.env.UPSTASH_REDIS_URL;
+    if (!redisUrl) {
+      // No Redis configured — return a no-op client that always misses
+      redisInstance = new Redis({ lazyConnect: true, enableOfflineQueue: false });
+      return redisInstance;
+    }
+    redisInstance = new Redis(redisUrl, {
       tls: { rejectUnauthorized: false },
       maxRetriesPerRequest: 3,
       lazyConnect: true,

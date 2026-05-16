@@ -38,3 +38,8 @@ Built the complete data ingestion engine and AI scoring pipeline. Created `lib/i
 Progress: 33%
 
 ---
+[Phase 3][Public Dashboard]
+Built the complete public-facing dashboard. Created `lib/data/alerts.ts` as the data access layer with Redis-cached functions for country risk scores, top alerts, and 7-day trend data (1-hour TTL, cache stampede protection). Implemented all public API endpoints: `/api/v1/risk-scores`, `/api/v1/risk-scores/trend`, `/api/v1/alerts` (tier-gated), `/api/v1/alerts/[id]`, `/api/v1/countries/[iso]`. Built three interactive dashboard components: `RiskMap` (Leaflet world map, color-coded by risk level, client-only with `RiskMapClient` wrapper for Next.js 16 compatibility), `AlertTicker` (paginated alert list with severity badges, country flags, teaser paywall at item 3), and `RiskTrendChart` (Recharts 7-day line chart). Updated the home page to use server-side data fetching (ISR, 1-hour revalidate) for fast first paint. Built the alert detail page with score breakdown bars, case/death counts, source link, and paid-tier deep report CTA. Built country pages (`/countries/[iso]`) with `generateStaticParams` for pre-rendering. Added `/alerts/[id]` detail pages with ISR. Implemented auto-generated sitemap and robots.txt. All pages guard against missing Supabase credentials during CI builds. 22 routes build cleanly; 12 tests pass.
+Progress: 50%
+
+---
