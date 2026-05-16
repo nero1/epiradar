@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requirePaidUser } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/server";
 import { rateLimitExport } from "@/lib/ratelimit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 /**
  * POST /api/v1/exports/csv — export alerts as CSV. Paid tier only.
@@ -30,11 +31,19 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const { countryIso, pathogen, limit = 1000 } = body as {
+  const { countryIso, pathogen, limit = 1000, turnstileToken } = body as {
     countryIso?: string;
     pathogen?: string;
     limit?: number;
+    turnstileToken?: string;
   };
+
+  // Bot protection: verify Turnstile token on export forms (PRD §5.2 / §14)
+  const clientIp = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? undefined;
+  const turnstilePassed = await verifyTurnstileToken(turnstileToken ?? "", clientIp);
+  if (!turnstilePassed) {
+    return NextResponse.json({ error: "Bot protection failed. Please complete the verification." }, { status: 403 });
+  }
 
   const supabase = createAdminClient();
 

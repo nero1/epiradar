@@ -21,6 +21,7 @@ export async function GET() {
   return NextResponse.json({
     hasApiKey: !!user.api_key_hash,
     keyPrefix: user.api_key_hash ? "epk_***" : null,
+    lastUsedAt: user.api_key_last_used_at ?? null,
     rateLimit: "1,000 requests/day",
   });
 }

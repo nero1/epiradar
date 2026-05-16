@@ -320,6 +320,9 @@ export default function AdminClient() {
                           {u.plan === "paid" && (
                             <button onClick={() => handleUserAction(u.id, "set_plan", { plan: "free" })} disabled={isPending} style={actionBtnStyle("#6B7280")}>→ Free</button>
                           )}
+                          <button onClick={() => handleUserAction(u.id, "set_admin", { is_admin: !u.is_admin })} disabled={isPending} style={actionBtnStyle(u.is_admin ? "#6B7280" : "#1A5C4A")}>
+                            {u.is_admin ? "Remove Admin" : "Make Admin"}
+                          </button>
                           <button onClick={() => handleUserAction(u.id, "impersonate")} disabled={isPending} style={actionBtnStyle("#7C3AED")}>Impersonate</button>
                         </div>
                       </td>

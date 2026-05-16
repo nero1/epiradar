@@ -4,11 +4,13 @@ import { requireAuth } from "@/lib/auth/session";
 import { getAlertById } from "@/lib/data/alerts";
 import { checkAndDecrementPdfQuota, generateAlertPdfHtml, getRemainingQuota } from "@/lib/export/pdf";
 import { rateLimitExport } from "@/lib/ratelimit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { z } from "zod";
 
 const ExportSchema = z.object({
   alertId: z.string().uuid(),
   idempotencyKey: z.string().min(1).max(128),
+  turnstileToken: z.string().optional(),
 });
 
 /**
@@ -44,7 +46,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { alertId } = parsed.data;
+  const { alertId, turnstileToken } = parsed.data;
+
+  // Bot protection: verify Turnstile token on export forms (PRD §5.2 / §14)
+  const clientIp = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? undefined;
+  const turnstilePassed = await verifyTurnstileToken(turnstileToken ?? "", clientIp);
+  if (!turnstilePassed) {
+    return NextResponse.json({ error: "Bot protection failed. Please complete the verification." }, { status: 403 });
+  }
 
   // Fetch alert
   const alert = await getAlertById(alertId);

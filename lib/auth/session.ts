@@ -1,5 +1,6 @@
-import { createServerClientInstance } from "@/lib/supabase/server";
+import { createServerClientInstance, createAdminClient } from "@/lib/supabase/server";
 import type { User } from "@/lib/supabase/types";
+import { hashApiKey } from "@/lib/billing/apikey";
 
 /**
  * Retrieves the authenticated user's profile from the database.
@@ -66,4 +67,42 @@ export async function requirePaidUser(): Promise<User> {
   }
 
   return user;
+}
+
+/**
+ * Authenticate a request via API key (Bearer epk_... header).
+ * Validates the key hash, verifies paid plan, updates last-used timestamp.
+ * Returns the user on success, null on failure.
+ *
+ * Used by v1 API routes that support API key authentication.
+ */
+export async function authenticateApiKey(authHeader: string | null): Promise<User | null> {
+  if (!authHeader?.startsWith("Bearer epk_")) return null;
+
+  const rawKey = authHeader.slice("Bearer ".length);
+  const keyHash = hashApiKey(rawKey);
+
+  const supabase = createAdminClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: user, error } = await (supabase as any)
+    .from("users")
+    .select("*")
+    .eq("api_key_hash", keyHash)
+    .eq("plan", "paid")
+    .is("deleted_at", null)
+    .single();
+
+  if (error || !user) return null;
+
+  // Update last-used timestamp — fire and forget, non-fatal
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (supabase as any)
+    .from("users")
+    .update({ api_key_last_used_at: new Date().toISOString() })
+    .eq("id", user.id)
+    .then()
+    .catch((e: Error) => console.warn("[auth] Failed to update api_key_last_used_at:", e.message));
+
+  return user as User;
 }
