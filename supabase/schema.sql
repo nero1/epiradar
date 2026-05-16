@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   api_key_last_used_at TIMESTAMPTZ,
   totp_secret     TEXT, -- encrypted at application level before storage
   pin_hash        TEXT,
+  preferred_theme TEXT,          -- name of an admin-defined theme, or null for global default
   is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
   deleted_at      TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

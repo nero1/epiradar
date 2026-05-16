@@ -68,6 +68,7 @@ export default function AdminClient() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [isPending, startTransition] = useTransition();
   const [actionMsg, setActionMsg] = useState("");
+  const [scoreMsg, setScoreMsg] = useState("");
 
   // Theme builder
   const [themeName, setThemeName] = useState("");
@@ -75,14 +76,25 @@ export default function AdminClient() {
   const [bgPage, setBgPage] = useState("#f8fafc");
   const [textPrimary, setTextPrimary] = useState("#111827");
   const [themeMsg, setThemeMsg] = useState("");
+  const [availableThemes, setAvailableThemes] = useState<string[]>([]);
+  const [assignThemeValues, setAssignThemeValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (tab === "overview") fetchStats();
     if (tab === "revenue") fetchRevenue();
-    if (tab === "users") fetchUsers();
+    if (tab === "users") { fetchUsers(); loadThemes(); }
     if (tab === "audit") fetchAudit();
+    if (tab === "themes") loadThemes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  async function loadThemes() {
+    const r = await fetch("/api/admin/themes");
+    if (r.ok) {
+      const b = await r.json();
+      setAvailableThemes((b.themes ?? []).map((t: { name: string }) => t.name));
+    }
+  }
 
   async function fetchStats() {
     const r = await fetch("/api/admin/stats");
@@ -265,13 +277,26 @@ export default function AdminClient() {
                 )}
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   onClick={async () => { await fetch("/api/admin/ingest", { method: "POST" }); setTimeout(fetchStats, 2000); }}
                   style={{ padding: "9px 18px", background: "var(--color-brand)", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
                 >
                   Trigger Ingestion Run
                 </button>
+                <button
+                  onClick={async () => {
+                    setScoreMsg("Running…");
+                    const res = await fetch("/api/admin/score", { method: "POST" });
+                    const body = await res.json().catch(() => ({}));
+                    if (res.ok) setScoreMsg(`Scored ${body.scored} alert(s), ${body.failed} failed. ${body.message ?? ""}`);
+                    else setScoreMsg(body.error ?? "AI scoring run failed.");
+                  }}
+                  style={{ padding: "9px 18px", background: "transparent", color: "var(--color-brand)", border: "1px solid var(--color-brand)", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                >
+                  Trigger AI Scoring Run
+                </button>
+                {scoreMsg && <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{scoreMsg}</span>}
               </div>
             </>
           ) : (
@@ -324,6 +349,25 @@ export default function AdminClient() {
                             {u.is_admin ? "Remove Admin" : "Make Admin"}
                           </button>
                           <button onClick={() => handleUserAction(u.id, "impersonate")} disabled={isPending} style={actionBtnStyle("#7C3AED")}>Impersonate</button>
+                          {availableThemes.length > 0 && (
+                            <select
+                              value={assignThemeValues[u.id] ?? ""}
+                              onChange={(e) => setAssignThemeValues((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                              style={{ padding: "3px 6px", fontSize: 11, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-page)", color: "var(--text-primary)" }}
+                            >
+                              <option value="">Default theme</option>
+                              {availableThemes.map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          )}
+                          {availableThemes.length > 0 && (
+                            <button
+                              onClick={() => handleUserAction(u.id, "set_theme", { theme: assignThemeValues[u.id] || null })}
+                              disabled={isPending}
+                              style={actionBtnStyle("#0D9488")}
+                            >
+                              Set Theme
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

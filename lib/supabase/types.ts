@@ -41,6 +41,7 @@ export interface User {
   api_key_last_used_at: string | null;
   totp_secret: string | null;
   pin_hash: string | null;
+  preferred_theme: string | null;
   is_admin: boolean;
   deleted_at: string | null;
   created_at: string;

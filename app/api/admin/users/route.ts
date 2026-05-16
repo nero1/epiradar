@@ -6,9 +6,10 @@ import { z } from "zod";
 
 const UpdateUserSchema = z.object({
   userId: z.string().uuid(),
-  action: z.enum(["suspend", "unsuspend", "set_plan", "set_admin", "impersonate"]),
+  action: z.enum(["suspend", "unsuspend", "set_plan", "set_admin", "impersonate", "set_theme"]),
   plan: z.enum(["free", "paid"]).optional(),
   is_admin: z.boolean().optional(),
+  theme: z.string().max(60).nullable().optional(),
 });
 
 /** GET /api/admin/users — paginated user list */
@@ -52,7 +53,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { userId, action, plan, is_admin } = parsed.data;
+  const { userId, action, plan, is_admin, theme } = parsed.data;
 
   // Prevent self-demotion
   if (action === "set_admin" && userId === admin.id && is_admin === false) {
@@ -105,6 +106,7 @@ export async function PATCH(request: NextRequest) {
   else if (action === "unsuspend") update = { deleted_at: null };
   else if (action === "set_plan" && plan) update = { plan };
   else if (action === "set_admin" && is_admin !== undefined) update = { is_admin };
+  else if (action === "set_theme") update = { preferred_theme: theme ?? null };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any)

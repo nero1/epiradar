@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import type { User } from "@/lib/supabase/types";
 import { getRemainingQuota, FREE_PDF_LIMIT } from "@/lib/utils/quota";
 
@@ -8,7 +8,7 @@ interface Props {
   user: User;
 }
 
-type Tab = "profile" | "security" | "exports" | "apikey" | "pin";
+type Tab = "profile" | "security" | "exports" | "apikey" | "pin" | "theme";
 
 const FREE_MONTHLY_PDF = FREE_PDF_LIMIT;
 
@@ -80,10 +80,26 @@ export default function AccountClient({ user }: Props) {
   const [apiKeyInfo, setApiKeyInfo] = useState<{ hasKey: boolean; rawKey?: string } | null>(null);
   const [apiKeyMsg, setApiKeyMsg] = useState("");
 
+  // Theme
+  const [availableThemes, setAvailableThemes] = useState<string[]>([]);
+  const [selectedTheme, setSelectedTheme] = useState<string>(user.preferred_theme ?? "");
+  const [themeMsg, setThemeMsg] = useState("");
+
   // Delete account
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteMsg, setDeleteMsg] = useState("");
   const [showDelete, setShowDelete] = useState(false);
+
+  // Load available themes when theme tab is opened
+  useEffect(() => {
+    if (tab === "theme" && availableThemes.length === 0) {
+      fetch("/api/admin/themes")
+        .then((r) => r.ok ? r.json() : { themes: [] })
+        .then((b) => setAvailableThemes((b.themes ?? []).map((t: { name: string }) => t.name)))
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const remaining = user.plan === "paid"
     ? "Unlimited"
@@ -207,6 +223,24 @@ export default function AccountClient({ user }: Props) {
     });
   }
 
+  // --- Theme ---
+  async function handleSaveTheme() {
+    setThemeMsg("");
+    startTransition(async () => {
+      const res = await fetch("/api/v1/account/theme", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeName: selectedTheme || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setThemeMsg("Theme preference saved. Reload to see changes.");
+      } else {
+        setThemeMsg(body.error ?? "Failed to save theme preference.");
+      }
+    });
+  }
+
   // --- Delete account ---
   async function handleDeleteAccount() {
     if (deleteConfirm !== "DELETE") { setDeleteMsg('Type "DELETE" to confirm.'); return; }
@@ -270,6 +304,7 @@ export default function AccountClient({ user }: Props) {
         {tabBtn("security", "Security")}
         {tabBtn("exports", "Exports")}
         {tabBtn("pin", "PIN")}
+        {tabBtn("theme", "Theme")}
         {user.plan === "paid" && tabBtn("apikey", "API Key")}
       </div>
 
@@ -444,6 +479,47 @@ export default function AccountClient({ user }: Props) {
               </button>
               {removePinMsg && <p style={msgStyle(removePinMsg === "PIN removed.")}>{removePinMsg}</p>}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Theme tab */}
+      {tab === "theme" && (
+        <div style={cardStyle}>
+          <h2 style={{ margin: "0 0 8px", fontSize: 16, color: "var(--text-primary)" }}>Display Theme</h2>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+            Choose a custom theme created by your administrator, or leave blank to use the platform default.
+          </p>
+
+          {availableThemes.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              No custom themes available. Administrators can create themes in the admin panel.
+            </p>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Select theme
+              </label>
+              <select
+                value={selectedTheme}
+                onChange={(e) => setSelectedTheme(e.target.value)}
+                style={{ padding: "9px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-page)", color: "var(--text-primary)", fontSize: 14, outline: "none", minWidth: 200 }}
+              >
+                <option value="">Default (platform theme)</option>
+                {availableThemes.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button style={btnStyle()} onClick={handleSaveTheme} disabled={isPending || availableThemes.length === 0}>
+            Save preference
+          </button>
+          {themeMsg && (
+            <p style={{ marginTop: 8, fontSize: 13, color: themeMsg.includes("Reload") || themeMsg.includes("saved") ? "#16A34A" : "#DC2626" }}>
+              {themeMsg}
+            </p>
           )}
         </div>
       )}

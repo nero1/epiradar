@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useOnlineStatus } from "@/lib/hooks/useOnlineStatus";
 
 interface Props {
   alertId: string;
@@ -12,15 +13,30 @@ interface Props {
  * Share button and PDF export CTA for alert detail pages.
  * Share uses Web Share API with clipboard fallback.
  * Export enforces tier — free users see quota, paid users export freely.
+ * Offline-aware: queues the export and retries automatically when back online.
  */
 export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
   const [shareMsg, setShareMsg] = useState("");
   const [exportMsg, setExportMsg] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [queued, setQueued] = useState(false);
+  const isOnline = useOnlineStatus();
+  const queuedRef = useRef(false);
 
   const appUrl = typeof window !== "undefined" ? window.location.origin : "";
   const alertUrl = `${appUrl}/alerts/${alertId}`;
   const shareText = `Outbreak alert on EpiRadar: ${alertTitle}`;
+
+  // Auto-retry the export when connection is restored
+  useEffect(() => {
+    if (isOnline && queuedRef.current) {
+      queuedRef.current = false;
+      setQueued(false);
+      setExportMsg("Back online — retrying export…");
+      doExport();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
 
   async function handleShare() {
     if (navigator.share) {
@@ -36,18 +52,17 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
     }
   }
 
-  async function handleExportPdf() {
-    if (!userPlan || userPlan === "public") {
-      window.location.href = "/login";
-      return;
-    }
+  async function doExport() {
     setExporting(true);
     setExportMsg("");
     try {
       const res = await fetch("/api/v1/exports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alertId }),
+        body: JSON.stringify({
+          alertId,
+          idempotencyKey: `pdf-${alertId}-${Date.now()}`,
+        }),
       });
 
       if (!res.ok) {
@@ -56,12 +71,11 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
         return;
       }
 
-      // Stream PDF download
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `epiradar-alert-${alertId}.pdf`;
+      a.download = `epiradar-alert-${alertId}.html`;
       a.click();
       URL.revokeObjectURL(url);
       setExportMsg("PDF downloaded.");
@@ -71,6 +85,22 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
       setExporting(false);
       setTimeout(() => setExportMsg(""), 4000);
     }
+  }
+
+  async function handleExportPdf() {
+    if (!userPlan || userPlan === "public") {
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!isOnline) {
+      queuedRef.current = true;
+      setQueued(true);
+      setExportMsg("Queued — will retry when online.");
+      return;
+    }
+
+    await doExport();
   }
 
   const btnBase: React.CSSProperties = {
@@ -122,7 +152,7 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
           disabled={exporting}
           style={{
             ...btnBase,
-            background: "var(--brand-green)",
+            background: queued ? "#D97706" : "var(--brand-green)",
             color: "#fff",
             opacity: exporting ? 0.7 : 1,
           }}
@@ -130,7 +160,7 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          {exporting ? "Exporting…" : "Export PDF"}
+          {exporting ? "Exporting…" : queued ? "Queued…" : "Export PDF"}
         </button>
       )}
 
@@ -138,7 +168,11 @@ export default function AlertActions({ alertId, alertTitle, userPlan }: Props) {
         <span
           style={{
             fontSize: 12,
-            color: exportMsg.includes("fail") || exportMsg.includes("failed") ? "#DC2626" : "#16A34A",
+            color: exportMsg.includes("Queued") || exportMsg.includes("retry")
+              ? "#D97706"
+              : exportMsg.includes("fail") || exportMsg.includes("failed")
+              ? "#DC2626"
+              : "#16A34A",
           }}
         >
           {exportMsg}
