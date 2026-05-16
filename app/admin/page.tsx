@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth/session";
 import Header from "@/components/layout/Header";
+import AdminClient from "./AdminClient";
 
-export const metadata: Metadata = { title: "Admin Panel" };
+export const metadata: Metadata = { title: "Admin Panel — EpiRadar" };
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  // is_admin verified from DB — never from session alone
+  try {
+    await requireAdmin();
+  } catch {
+    redirect("/");
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
       <Header />
@@ -11,9 +21,7 @@ export default function AdminPage() {
         <h1 className="mb-6 text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
           Admin Panel
         </h1>
-        <p style={{ color: "var(--text-secondary)" }}>
-          Full admin panel coming in Phase 6 — security hardening and launch prep.
-        </p>
+        <AdminClient />
       </main>
     </div>
   );
