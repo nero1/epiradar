@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const UpdateUserSchema = z.object({
   userId: z.string().uuid(),
-  action: z.enum(["suspend", "unsuspend", "set_plan", "set_admin"]),
+  action: z.enum(["suspend", "unsuspend", "set_plan", "set_admin", "impersonate"]),
   plan: z.enum(["free", "paid"]).optional(),
   is_admin: z.boolean().optional(),
 });
@@ -60,6 +60,45 @@ export async function PATCH(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
+
+  // Impersonate: generate a magic link for the target user (audit-logged)
+  if (action === "impersonate") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: targetUser } = await (supabase as any)
+      .from("users")
+      .select("email")
+      .eq("id", userId)
+      .single();
+
+    if (!targetUser?.email) {
+      return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+    }
+
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: "magiclink",
+      email: targetUser.email,
+    });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error("[admin/users] Impersonate link generation failed:", linkError);
+      return NextResponse.json({ error: "Failed to generate impersonation link" }, { status: 500 });
+    }
+
+    // Audit log the impersonation
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from("admin_audit_log")
+      .insert({
+        admin_id: admin.id,
+        action: "impersonate",
+        target_id: userId,
+        details: { targetEmail: targetUser.email },
+      })
+      .catch((e: Error) => console.error("[admin/users] Audit log failed:", e));
+
+    return NextResponse.json({ success: true, impersonateUrl: linkData.properties.action_link });
+  }
+
   let update: Record<string, unknown> = {};
 
   if (action === "suspend") update = { deleted_at: new Date().toISOString() };
@@ -82,8 +121,8 @@ export async function PATCH(request: NextRequest) {
     .insert({
       admin_id: admin.id,
       action,
-      target_user_id: userId,
-      payload: { ...parsed.data, ...update },
+      target_id: userId,
+      details: { ...parsed.data, ...update },
     })
     .catch((e: Error) => console.error("[admin/users] Audit log failed:", e));
 

@@ -4,7 +4,10 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import BottomToolbar from "@/components/layout/BottomToolbar";
 import OfflineBanner from "@/components/layout/OfflineBanner";
+import AlertActions from "@/components/dashboard/AlertActions";
+import DeepReportClient from "@/components/dashboard/DeepReportClient";
 import { getAlertById, getTopAlerts } from "@/lib/data/alerts";
+import { getAuthenticatedUser } from "@/lib/auth/session";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -61,11 +64,13 @@ function countryFlag(iso: string) {
 
 export default async function AlertDetailPage({ params }: Props) {
   const { id } = await params;
-  const alert = await getAlertById(id);
+  const [alert, user] = await Promise.all([getAlertById(id), getAuthenticatedUser()]);
 
   if (!alert) notFound();
 
   const riskScore = Number(alert.risk_score);
+  const userPlan = (user?.plan ?? null) as "public" | "free" | "paid" | null;
+  const alertTitle = `${alert.pathogen ?? "Outbreak"} in ${alert.country_iso.join(", ")}`;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
@@ -118,14 +123,17 @@ export default async function AlertDetailPage({ params }: Props) {
 
           {/* AI Summary */}
           {alert.ai_summary ? (
-            <p className="text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            <p className="mb-4 text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               {alert.ai_summary}
             </p>
           ) : (
-            <p className="text-sm italic" style={{ color: "var(--text-muted)" }}>
+            <p className="mb-4 text-sm italic" style={{ color: "var(--text-muted)" }}>
               AI summary not yet available.
             </p>
           )}
+
+          {/* Share + PDF export actions */}
+          <AlertActions alertId={id} alertTitle={alertTitle} userPlan={userPlan} />
         </div>
 
         {/* Score breakdown */}
@@ -212,25 +220,32 @@ export default async function AlertDetailPage({ params }: Props) {
           </p>
         </div>
 
-        {/* Paid CTA for deep report */}
-        <div
-          className="rounded-xl border-2 p-6 text-center"
-          style={{ borderColor: "var(--brand-green)", backgroundColor: "var(--bg-card)" }}
-        >
-          <h2 className="mb-2 text-base font-bold" style={{ color: "var(--text-primary)" }}>
-            Get a full AI situation report
-          </h2>
-          <p className="mb-4 text-sm" style={{ color: "var(--text-secondary)" }}>
-            Paid plan includes deep AI-generated reports: background, current situation, transmission risk, and recommended actions.
-          </p>
-          <Link
-            href="/pricing"
-            className="inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ backgroundColor: "var(--brand-green)" }}
+        {/* Deep report: generate for paid, upgrade CTA for others */}
+        {userPlan === "paid" ? (
+          <DeepReportClient
+            countryIso={alert.country_iso[0]}
+            pathogen={alert.pathogen ?? undefined}
+          />
+        ) : (
+          <div
+            className="rounded-xl border-2 p-6 text-center"
+            style={{ borderColor: "var(--brand-green)", backgroundColor: "var(--bg-card)" }}
           >
-            Upgrade to Paid →
-          </Link>
-        </div>
+            <h2 className="mb-2 text-base font-bold" style={{ color: "var(--text-primary)" }}>
+              Get a full AI situation report
+            </h2>
+            <p className="mb-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+              Paid plan includes deep AI-generated reports: background, current situation, transmission risk, and recommended actions.
+            </p>
+            <Link
+              href="/pricing"
+              className="inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "var(--brand-green)" }}
+            >
+              Upgrade to Paid →
+            </Link>
+          </div>
+        )}
       </main>
 
       <BottomToolbar />

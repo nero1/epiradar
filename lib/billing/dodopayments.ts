@@ -61,6 +61,43 @@ export async function createDodoCheckout(params: {
   return { checkoutUrl: session.url, sessionId: session.id };
 }
 
+/** Handle a failed Dodopayments payment — applies 3-day grace period before downgrade */
+export async function handleDodoFailure(event: DodoEvent): Promise<void> {
+  const { id, metadata } = event.data;
+  const userId = metadata?.userId;
+  if (!userId) return;
+
+  const supabase = createAdminClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("billing_events")
+    .upsert(
+      {
+        user_id: userId,
+        provider: "dodopayments",
+        event_type: event.type,
+        amount: event.data.amount,
+        currency: event.data.currency,
+        idempotency_key: `fail-${id}`,
+        payload: event.data,
+      },
+      { onConflict: "idempotency_key", ignoreDuplicates: true },
+    );
+
+  const graceEnd = new Date();
+  graceEnd.setDate(graceEnd.getDate() + 3);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("users")
+    .update({ plan_expires_at: graceEnd.toISOString() })
+    .eq("id", userId)
+    .eq("plan", "paid");
+
+  console.log(`[dodopayments] Failed payment for user ${userId}. Grace period until ${graceEnd.toISOString()}`);
+}
+
 /** Handle a successful Dodopayments charge — upgrades user plan atomically */
 export async function handleDodoSuccess(event: DodoEvent): Promise<void> {
   const { id, customer, metadata } = event.data;

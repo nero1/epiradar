@@ -56,6 +56,45 @@ export async function initiatePaystackPayment(params: {
   return { authorizationUrl: data.authorization_url, reference: data.reference };
 }
 
+/** Handle a failed Paystack charge — applies 3-day grace period before downgrade */
+export async function handlePaystackFailure(event: PaystackEvent): Promise<void> {
+  const { metadata } = event.data;
+  const userId = metadata?.userId;
+  if (!userId) return;
+
+  const supabase = createAdminClient();
+
+  // Record the failed event
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("billing_events")
+    .upsert(
+      {
+        user_id: userId,
+        provider: "paystack",
+        event_type: event.event,
+        amount: event.data.amount,
+        currency: event.data.currency,
+        idempotency_key: `fail-${event.data.reference}`,
+        payload: event.data,
+      },
+      { onConflict: "idempotency_key", ignoreDuplicates: true },
+    );
+
+  // Set plan_expires_at to 3 days from now — Vercel's expiry check will downgrade after this
+  const graceEnd = new Date();
+  graceEnd.setDate(graceEnd.getDate() + 3);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("users")
+    .update({ plan_expires_at: graceEnd.toISOString() })
+    .eq("id", userId)
+    .eq("plan", "paid");
+
+  console.log(`[paystack] Failed payment for user ${userId}. Grace period until ${graceEnd.toISOString()}`);
+}
+
 /** Handle a successful Paystack charge — upgrades user plan atomically */
 export async function handlePaystackSuccess(event: PaystackEvent): Promise<void> {
   const { reference, customer, metadata } = event.data;

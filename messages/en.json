@@ -1,0 +1,58 @@
+{
+  "nav": {
+    "home": "Home",
+    "map": "Map",
+    "alerts": "Alerts",
+    "watchlist": "Watchlist",
+    "account": "Account"
+  },
+  "dashboard": {
+    "title": "EpiRadar",
+    "tagline": "AI-powered infectious disease early warning",
+    "riskMap": "Global Risk Map",
+    "liveAlerts": "Live Alerts",
+    "trendChart": "7-Day Risk Trend",
+    "signUpCta": "Create free account to unlock full alert history and watchlists"
+  },
+  "alert": {
+    "critical": "Critical",
+    "high": "High",
+    "moderate": "Moderate",
+    "low": "Low",
+    "riskScore": "Risk Score",
+    "severity": "Severity",
+    "spread": "Geographic Spread",
+    "novelty": "Novelty",
+    "cases": "Confirmed Cases",
+    "deaths": "Deaths",
+    "source": "Primary Source",
+    "share": "Share",
+    "copied": "Link copied!",
+    "exportPdf": "Export PDF"
+  },
+  "account": {
+    "plan": "Current plan",
+    "upgrade": "Upgrade",
+    "profile": "Profile",
+    "security": "Security",
+    "exports": "Export Usage",
+    "apiKeys": "API Keys",
+    "pin": "PIN",
+    "deleteAccount": "Delete Account"
+  },
+  "pricing": {
+    "free": "Free",
+    "paid": "Paid",
+    "upgrade": "Upgrade to Paid"
+  },
+  "errors": {
+    "unauthorized": "You must be signed in to access this.",
+    "forbidden": "You do not have permission to perform this action.",
+    "notFound": "The requested resource was not found.",
+    "serverError": "Something went wrong. Please try again."
+  },
+  "offline": {
+    "banner": "You are offline. Showing cached data.",
+    "lastUpdated": "Last updated"
+  }
+}
