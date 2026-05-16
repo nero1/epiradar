@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { getAuthenticatedUser } from "@/lib/auth/session";
 import Header from "@/components/layout/Header";
 import BottomToolbar from "@/components/layout/BottomToolbar";
+import AccountClient from "./AccountClient";
 
-export const metadata: Metadata = { title: "Account" };
+export const metadata: Metadata = { title: "Account Settings — EpiRadar" };
 
-export default function AccountPage() {
+export default async function AccountPage() {
+  const user = await getAuthenticatedUser();
+  if (!user) redirect("/login");
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
       <Header />
@@ -12,9 +18,7 @@ export default function AccountPage() {
         <h1 className="mb-6 text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
           Account Settings
         </h1>
-        <p style={{ color: "var(--text-secondary)" }}>
-          Account management coming in Phase 4 — free account features.
-        </p>
+        <AccountClient user={user} />
       </main>
       <BottomToolbar />
     </div>

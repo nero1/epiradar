@@ -1,0 +1,92 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { requirePaidUser } from "@/lib/auth/session";
+import { createAdminClient } from "@/lib/supabase/server";
+import { rateLimitExport } from "@/lib/ratelimit";
+
+/**
+ * POST /api/v1/exports/csv — export alerts as CSV. Paid tier only.
+ * Rate limited: 10/hour/user.
+ * Supports optional filtering by country ISO and/or pathogen.
+ */
+export async function POST(request: NextRequest) {
+  let user;
+  try {
+    user = await requirePaidUser();
+  } catch {
+    return NextResponse.json(
+      { error: "Paid plan required for CSV export", upgradeUrl: "/pricing" },
+      { status: 403 },
+    );
+  }
+
+  // Rate limit check
+  const rl = await rateLimitExport(user.id);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded", retryAfterMs: rl.retryAfterMs },
+      { status: 429 },
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const { countryIso, pathogen, limit = 1000 } = body as {
+    countryIso?: string;
+    pathogen?: string;
+    limit?: number;
+  };
+
+  const supabase = createAdminClient();
+
+  let query = supabase
+    .from("alerts")
+    .select("id, source, country_iso, pathogen, risk_score, severity_score, spread_score, novelty_score, ai_summary, case_count, death_count, published_at, ingested_at")
+    .eq("is_active", true)
+    .order("risk_score", { ascending: false })
+    .limit(Math.min(limit, 10000));
+
+  if (countryIso) {
+    query = query.contains("country_iso", [countryIso.toUpperCase()]);
+  }
+
+  if (pathogen) {
+    query = query.ilike("pathogen", `%${pathogen}%`);
+  }
+
+  const { data: alerts, error } = await query;
+
+  if (error) return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
+
+  // Build CSV
+  const headers = [
+    "id", "source", "country_iso", "pathogen", "risk_score",
+    "severity_score", "spread_score", "novelty_score",
+    "ai_summary", "case_count", "death_count", "published_at", "ingested_at",
+  ];
+
+  const csvRows = [
+    headers.join(","),
+    ...(alerts ?? []).map((row) =>
+      headers.map((h) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const val = (row as any)[h];
+        if (val === null || val === undefined) return "";
+        if (Array.isArray(val)) return `"${val.join(";")}"`;
+        const str = String(val);
+        return str.includes(",") || str.includes('"') || str.includes("\n")
+          ? `"${str.replace(/"/g, '""')}"`
+          : str;
+      }).join(","),
+    ),
+  ].join("\n");
+
+  const filename = `epiradar-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+
+  return new NextResponse(csvRows, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
