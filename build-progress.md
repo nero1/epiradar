@@ -43,3 +43,8 @@ Built the complete public-facing dashboard. Created `lib/data/alerts.ts` as the 
 Progress: 50%
 
 ---
+[Phase 4][Free Account Features]
+Implemented the complete free-tier account experience. Built the account settings page (`/account`) as a server component with a tabbed client component covering: profile (display name update), security (password change, TOTP 2FA setup with pending-prefix activation guard), and export usage (Decimal.js-powered progress bar, plan-aware messaging). Built the watchlist UI (`/watchlist`) with add/remove flow, type selector (country/pathogen/region), alert mode toggle (daily/immediate), and free-tier 3-item cap with upgrade prompt. Created all supporting API routes: `PATCH /api/v1/account/profile`, `POST /api/v1/account/password` (Supabase Auth updateUser), `POST /api/v1/account/totp/setup` and `POST /api/v1/account/totp/verify` (otplib, pending: prefix pattern prevents unverified secrets going live), `GET/POST/DELETE /api/v1/watchlists` (free-tier enforcement, 409 on duplicates). Added PDF export (`POST /api/v1/exports/pdf`) with atomic DB quota decrement via Postgres RPC and CSV export (`POST /api/v1/exports/csv`, paid-only, country/pathogen filters). Built the daily alert digest CRON (`GET /api/cron/digest`, 07:00 UTC) that groups watchlist items by user, matches against last 24h high-risk alerts, and sends personalised HTML digest emails via Resend/Postmark with idempotency keys. Rate limiter implemented with Redis INCR/EXPIRE token-bucket (10 exports/hour, 60 req/min IP, 1000 req/day API key). 31 total tests pass (19 new: quota math precision, Decimal.js floating-point correctness, rate limiter allow/block, email digest HTML validation).
+Progress: 67%
+
+---
