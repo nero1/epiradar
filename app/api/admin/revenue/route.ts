@@ -24,11 +24,11 @@ export async function GET() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: events } = await (supabase as any)
     .from("billing_events")
-    .select("amount, currency, provider, event_type, created_at")
+    .select("user_id, amount, currency, provider, event_type, created_at")
     .in("event_type", ["charge.success", "payment.succeeded"])
     .order("created_at", { ascending: false });
 
-  const allEvents: Array<{ amount: number; currency: string; provider: string; event_type: string; created_at: string }> = events ?? [];
+  const allEvents: Array<{ user_id: string; amount: number; currency: string; provider: string; event_type: string; created_at: string }> = events ?? [];
 
   // Normalise to USD cents (NGN: 1 USD ≈ 1500 NGN)
   const NGN_TO_USD_CENTS = new Decimal(100).div(1500);
@@ -67,6 +67,16 @@ export async function GET() {
     .eq("plan", "paid")
     .gte("created_at", thisMonthStart);
 
+  // Churn: users who were paid last month but are not paid now
+  // Approximated by: users who had a payment event last month but no payment this month
+  const lastMonthPayers = new Set(lastMonthEvents.map((e) => e.user_id).filter(Boolean));
+  const thisMonthPayers = new Set(thisMonthEvents.map((e) => e.user_id).filter(Boolean));
+  const churnedCount = [...lastMonthPayers].filter((id) => !thisMonthPayers.has(id)).length;
+  const churnRate =
+    lastMonthPayers.size > 0
+      ? new Decimal(churnedCount).div(lastMonthPayers.size).mul(100).toFixed(1)
+      : "0.0";
+
   return NextResponse.json({
     mrr: {
       thisMonth: mrrThis.toFixed(2),
@@ -76,6 +86,8 @@ export async function GET() {
     subscriptions: {
       activePaid: paidUsers ?? 0,
       newThisMonth: newPaidThisMonth ?? 0,
+      churnedThisMonth: churnedCount,
+      churnRate: `${churnRate}%`,
     },
     recentEvents: allEvents.slice(0, 20),
     generatedAt: now.toISOString(),

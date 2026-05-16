@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyDodoSignature, handleDodoSuccess } from "@/lib/billing/dodopayments";
+import { verifyDodoSignature, handleDodoSuccess, handleDodoFailure } from "@/lib/billing/dodopayments";
 import type { DodoEvent } from "@/lib/billing/dodopayments";
 
 /**
@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
   try {
     if (event.type === "payment.succeeded") {
       await handleDodoSuccess(event);
+    } else if (event.type === "payment.failed" || event.type === "subscription.payment_failed") {
+      await handleDodoFailure(event);
     }
   } catch (err) {
     console.error("[webhook/dodopayments] Processing error:", err);

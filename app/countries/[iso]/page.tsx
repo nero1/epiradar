@@ -5,7 +5,9 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import BottomToolbar from "@/components/layout/BottomToolbar";
 import OfflineBanner from "@/components/layout/OfflineBanner";
+import DeepReportClient from "@/components/dashboard/DeepReportClient";
 import { getCountrySummary, getCountryRiskScores } from "@/lib/data/alerts";
+import { getAuthenticatedUser } from "@/lib/auth/session";
 
 interface Props {
   params: Promise<{ iso: string }>;
@@ -73,8 +75,9 @@ export default async function CountryPage({ params }: Props) {
 
   if (!/^[A-Z]{2}$/.test(isoUpper)) notFound();
 
-  const summary = await getCountrySummary(isoUpper);
+  const [summary, user] = await Promise.all([getCountrySummary(isoUpper), getAuthenticatedUser()]);
   if (!summary) notFound();
+  const isPaid = user?.plan === "paid";
 
   const countryName = getCountryName(isoUpper);
 
@@ -161,24 +164,30 @@ export default async function CountryPage({ params }: Props) {
           </div>
         )}
 
-        {/* Deep report CTA (paid gate) */}
-        <div
-          className="mt-8 rounded-xl border-2 p-6 text-center"
-          style={{ borderColor: "var(--brand-green)", backgroundColor: "var(--bg-card)" }}
-        >
-          <h2 className="mb-2 font-bold" style={{ color: "var(--text-primary)" }}>
-            Get the full {countryName} situation report
-          </h2>
-          <p className="mb-4 text-sm" style={{ color: "var(--text-secondary)" }}>
-            Paid plan: AI-generated deep reports with background, transmission risk analysis, and recommended actions.
-          </p>
-          <Link
-            href="/pricing"
-            className="inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white"
-            style={{ backgroundColor: "var(--brand-green)" }}
-          >
-            Upgrade to Paid →
-          </Link>
+        {/* Deep report: generate for paid users, upgrade CTA for others */}
+        <div className="mt-8">
+          {isPaid ? (
+            <DeepReportClient countryIso={isoUpper} />
+          ) : (
+            <div
+              className="rounded-xl border-2 p-6 text-center"
+              style={{ borderColor: "var(--brand-green)", backgroundColor: "var(--bg-card)" }}
+            >
+              <h2 className="mb-2 font-bold" style={{ color: "var(--text-primary)" }}>
+                Get the full {countryName} situation report
+              </h2>
+              <p className="mb-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+                Paid plan: AI-generated deep reports with background, transmission risk analysis, and recommended actions.
+              </p>
+              <Link
+                href="/pricing"
+                className="inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white"
+                style={{ backgroundColor: "var(--brand-green)" }}
+              >
+                Upgrade to Paid →
+              </Link>
+            </div>
+          )}
         </div>
       </main>
 

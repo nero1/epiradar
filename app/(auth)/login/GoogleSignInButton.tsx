@@ -2,16 +2,25 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
+import TurnstileWidget from "@/components/ui/TurnstileWidget";
 
 /**
  * Initiates Google OAuth flow via Supabase Auth.
- * On success, Supabase redirects to /api/auth/callback which sets the session.
+ * Cloudflare Turnstile is shown first (bot protection).
+ * If NEXT_PUBLIC_TURNSTILE_SITE_KEY is not set, the widget is hidden and sign-in is always allowed (dev mode).
  */
 export default function GoogleSignInButton() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const hasTurnstile = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  // Sign-in is allowed when Turnstile is not configured (dev) or token obtained
+  const canSignIn = !hasTurnstile || !!turnstileToken;
 
   async function handleGoogleSignIn() {
+    if (!canSignIn) return;
+
     setIsLoading(true);
     setError(null);
 
@@ -39,7 +48,7 @@ export default function GoogleSignInButton() {
     <div className="space-y-3">
       <button
         onClick={handleGoogleSignIn}
-        disabled={isLoading}
+        disabled={isLoading || !canSignIn}
         className="flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         style={{
           backgroundColor: "var(--bg-card)",
@@ -47,6 +56,7 @@ export default function GoogleSignInButton() {
           color: "var(--text-primary)",
         }}
         aria-busy={isLoading}
+        title={!canSignIn ? "Please complete the verification above" : undefined}
       >
         {/* Google logo */}
         <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
@@ -69,6 +79,18 @@ export default function GoogleSignInButton() {
         </svg>
         {isLoading ? "Signing in…" : "Continue with Google"}
       </button>
+
+      {/* Turnstile bot protection — shown only when NEXT_PUBLIC_TURNSTILE_SITE_KEY is configured */}
+      <TurnstileWidget
+        onVerify={(token) => setTurnstileToken(token)}
+        onExpire={() => setTurnstileToken(null)}
+      />
+
+      {hasTurnstile && !turnstileToken && (
+        <p className="text-center text-xs" style={{ color: "var(--text-muted)" }}>
+          Complete the verification above to sign in.
+        </p>
+      )}
 
       {error && (
         <p

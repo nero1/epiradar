@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyPaystackSignature, handlePaystackSuccess } from "@/lib/billing/paystack";
+import { verifyPaystackSignature, handlePaystackSuccess, handlePaystackFailure } from "@/lib/billing/paystack";
 import type { PaystackEvent } from "@/lib/billing/paystack";
 
 /**
@@ -30,8 +30,9 @@ export async function POST(request: NextRequest) {
   try {
     if (event.event === "charge.success") {
       await handlePaystackSuccess(event);
+    } else if (event.event === "charge.failed" || event.event === "subscription.not_renew") {
+      await handlePaystackFailure(event);
     }
-    // Other events (refunds, disputes) can be handled here in future
   } catch (err) {
     console.error("[webhook/paystack] Processing error:", err);
     // Return 200 to prevent Paystack from retrying permanently broken events

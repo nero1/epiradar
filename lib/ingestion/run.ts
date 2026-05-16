@@ -1,8 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { fetchAllSources } from "./sources";
 import { scoreAlert } from "@/lib/ai/pipeline";
+import { sendEmail, buildAlertDigestHtml } from "@/lib/email";
 import type { RawAlert } from "./sources";
 import type { ScoredAlert } from "@/lib/ai/pipeline";
+import type { AlertDigestItem } from "@/lib/email";
 
 export interface IngestionResult {
   runId: string;
@@ -77,15 +79,28 @@ export async function runIngestion(triggeredBy: "cron" | "manual" | "external"):
         batch.map((item) => processAndStoreAlert(supabase, item)),
       );
 
-      for (const result of results) {
+      const newlyInserted: Array<{ id: string; scored: ScoredAlert }> = [];
+
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
         if (result.status === "fulfilled" && result.value) {
           itemsIngested++;
+          if (result.value.insertedId) {
+            newlyInserted.push({ id: result.value.insertedId, scored: result.value.scored });
+          }
         } else {
           itemsFailed++;
           if (result.status === "rejected") {
             console.error("[ingestion] Failed to process alert:", result.reason);
           }
         }
+      }
+
+      // Send immediate alerts to paid users watching matching pathogens/countries
+      if (newlyInserted.length > 0) {
+        sendImmediateAlerts(supabase, newlyInserted).catch((e) =>
+          console.error("[ingestion] Immediate alert dispatch error:", e),
+        );
       }
     }
 
@@ -127,14 +142,14 @@ async function processAndStoreAlert(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   item: RawAlert,
-): Promise<boolean> {
+): Promise<{ insertedId?: string; scored: ScoredAlert } | false> {
   const scored: ScoredAlert | null = await scoreAlert(item);
 
   if (!scored || !scored.isRelevant) {
     return false;
   }
 
-  const { error } = await supabase.from("alerts").insert({
+  const { data, error } = await supabase.from("alerts").insert({
     source: item.source,
     source_url: item.sourceUrl,
     content_hash: item.contentHash,
@@ -149,7 +164,7 @@ async function processAndStoreAlert(
     death_count: scored.deathCount,
     published_at: item.publishedAt.toISOString(),
     is_active: true,
-  });
+  }).select("id").single();
 
   if (error) {
     // Unique constraint violation = race condition with another concurrent run — acceptable
@@ -157,5 +172,68 @@ async function processAndStoreAlert(
     throw new Error(`Failed to insert alert: ${error.message}`);
   }
 
-  return true;
+  return { insertedId: data?.id, scored };
+}
+
+/**
+ * Send immediate email alerts to paid users with matching immediate-mode watchlist entries.
+ * Fire-and-forget — errors are logged but do not affect the ingestion result.
+ */
+async function sendImmediateAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  newAlerts: Array<{ id: string; scored: ScoredAlert }>,
+): Promise<void> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://epiradar.io";
+
+  // Fetch paid users with immediate-mode watchlists
+  const { data: watchlists } = await supabase
+    .from("watchlists")
+    .select("user_id, type, value, users(id, email, display_name, plan, deleted_at)")
+    .eq("alert_mode", "immediate");
+
+  if (!watchlists?.length) return;
+
+  // Group by user — only paid, non-deleted users
+  const byUser = new Map<string, { email: string; name: string; watches: Array<{ type: string; value: string }> }>();
+  for (const wl of watchlists) {
+    const u = wl.users;
+    if (!u || u.deleted_at || u.plan !== "paid") continue;
+    if (!byUser.has(wl.user_id)) {
+      byUser.set(wl.user_id, { email: u.email, name: u.display_name ?? u.email.split("@")[0], watches: [] });
+    }
+    byUser.get(wl.user_id)!.watches.push({ type: wl.type, value: wl.value });
+  }
+
+  for (const [userId, { email, name, watches }] of byUser) {
+    const matched: AlertDigestItem[] = newAlerts
+      .filter(({ scored }) =>
+        watches.some((w) => {
+          if (w.type === "country") return scored.countryIso.some((iso) => iso.toUpperCase() === w.value.toUpperCase());
+          if (w.type === "pathogen") return scored.pathogen?.toLowerCase().includes(w.value.toLowerCase());
+          return scored.countryIso.some((iso) => iso.toLowerCase().includes(w.value.toLowerCase()));
+        }),
+      )
+      .map(({ id, scored }) => ({
+        pathogen: scored.pathogen,
+        countryIso: scored.countryIso,
+        riskScore: scored.riskScore,
+        aiSummary: scored.aiSummary,
+        alertUrl: `${appUrl}/alerts/${id}`,
+      }));
+
+    if (!matched.length) continue;
+
+    const idempotencyKey = `immediate-${userId}-${Date.now()}`;
+    try {
+      await sendEmail({
+        to: email,
+        subject: `EpiRadar: Immediate alert — ${matched[0].pathogen ?? "Outbreak"} detected`,
+        html: buildAlertDigestHtml(matched, name),
+        idempotencyKey,
+      });
+    } catch (err) {
+      console.error(`[ingestion] Immediate alert email failed for ${userId}:`, (err as Error).message);
+    }
+  }
 }

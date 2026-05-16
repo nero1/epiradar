@@ -5,7 +5,7 @@
 - Node.js 20+
 - A Supabase project (free tier works for development)
 - A Redis instance (Upstash free tier or local Redis)
-- Optional: Resend or Postmark account for email
+- Optional: Mailgun account for email (paid-user alert digests only)
 - Optional: Paystack and/or Dodopayments accounts for billing
 
 ---
@@ -52,14 +52,15 @@ cp .env.local.example .env.local
 | `UPSTASH_REDIS_TOKEN` | Upstash Redis REST token |
 | `REDIS_PROVIDER` | `upstash` or `ioredis` (default: `upstash`) |
 
-### Email (one of these)
+### Email — Mailgun (paid-user digests only)
+
+Emails are sent **only to paid users**. Free accounts receive no email.
 
 | Variable | Description |
 |---|---|
-| `EMAIL_PROVIDER` | `resend` or `postmark` (default: `resend`) |
-| `RESEND_API_KEY` | Resend API key |
-| `POSTMARK_SERVER_TOKEN` | Postmark server token |
-| `EMAIL_FROM` | From address, e.g. `alerts@epiradar.io` |
+| `MAILGUN_API_KEY` | Mailgun API key (`key-...`) |
+| `MAILGUN_DOMAIN` | Your Mailgun sending domain, e.g. `mg.epiradar.io` |
+| `EMAIL_FROM` | From address, e.g. `EpiRadar Alerts <alerts@epiradar.io>` |
 
 ### Payments
 
