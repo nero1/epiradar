@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getCountryRiskScores, getTopAlerts } from "@/lib/data/alerts";
+import { getCountryRiskScores, getTopAlerts, getTopPathogens } from "@/lib/data/alerts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://epiradar.io";
 
@@ -19,9 +19,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return staticPages;
   }
 
-  const [scores, alerts] = await Promise.allSettled([
+  const [scores, alerts, pathogens] = await Promise.allSettled([
     getCountryRiskScores(),
     getTopAlerts(50),
+    getTopPathogens(30),
   ]);
 
   const countryPages: MetadataRoute.Sitemap =
@@ -44,5 +45,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }))
       : [];
 
-  return [...staticPages, ...countryPages, ...alertPages];
+  const pathogenPages: MetadataRoute.Sitemap =
+    pathogens.status === "fulfilled"
+      ? pathogens.value.map((p) => ({
+          url: `${BASE_URL}/pathogens/${encodeURIComponent(p.pathogen)}`,
+          lastModified: new Date(),
+          changeFrequency: "daily" as const,
+          priority: 0.75,
+        }))
+      : [];
+
+  return [...staticPages, ...countryPages, ...alertPages, ...pathogenPages];
 }

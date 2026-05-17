@@ -27,12 +27,18 @@ export async function GET() {
     { count: alertsWeek },
     { count: totalAlerts },
     { data: planCounts },
+    { count: exportsToday },
+    { count: exportsWeek },
+    { data: exportsByType },
   ] = await Promise.all([
     sb.from("ingestion_runs").select("*").order("started_at", { ascending: false }).limit(10),
     sb.from("alerts").select("id", { count: "exact", head: true }).gte("ingested_at", yesterday),
     sb.from("alerts").select("id", { count: "exact", head: true }).gte("ingested_at", weekAgo),
     sb.from("alerts").select("id", { count: "exact", head: true }).eq("is_active", true),
     sb.from("users").select("plan").is("deleted_at", null),
+    sb.from("export_logs").select("id", { count: "exact", head: true }).gte("created_at", yesterday),
+    sb.from("export_logs").select("id", { count: "exact", head: true }).gte("created_at", weekAgo),
+    sb.from("export_logs").select("export_type").gte("created_at", weekAgo),
   ]);
 
   const byPlan = { free: 0, paid: 0 };
@@ -42,13 +48,25 @@ export async function GET() {
   }
 
   // AI pipeline stats derived from ingestion_runs
-  const completedRuns: Array<{ items_ingested: number; items_skipped: number; errors: Record<string, string>; started_at: string; completed_at: string }> = (runs ?? []).filter(
+  const completedRuns: Array<{ items_ingested: number; items_skipped: number; errors: Record<string, unknown>; started_at: string; completed_at: string }> = (runs ?? []).filter(
     (r: { status: string }) => r.status === "completed",
   );
 
   const totalIngested = completedRuns.reduce((s: number, r) => s + (r.items_ingested ?? 0), 0);
   const totalSkipped = completedRuns.reduce((s: number, r) => s + (r.items_skipped ?? 0), 0);
   const failedRuns = (runs ?? []).filter((r: { status: string }) => r.status === "failed").length;
+
+  // Extract _stats stored by runIngestion: fallback counts and token usage
+  let totalFallbacks = 0;
+  let totalTokensRecent = 0;
+  for (const run of completedRuns) {
+    const stats = run.errors?._stats as { fallbacks?: number; tokens?: number } | undefined;
+    totalFallbacks += stats?.fallbacks ?? 0;
+    totalTokensRecent += stats?.tokens ?? 0;
+  }
+  const fallbackRate = totalIngested > 0 ? Math.round((totalFallbacks / totalIngested) * 100) : null;
+  // DeepSeek-chat cost: ~$0.28/M input tokens, ~$1.10/M output tokens; blended estimate ~$0.50/M total
+  const estimatedCostUsd = totalTokensRecent > 0 ? Number(((totalTokensRecent / 1_000_000) * 0.5).toFixed(4)) : null;
 
   // Source health: aggregate errors across recent runs
   const sourceErrors: Record<string, number> = {};
@@ -82,6 +100,13 @@ export async function GET() {
     .map((r) => new Date(r.completed_at).getTime() - new Date(r.started_at).getTime());
   const avgLatencyMs = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
 
+  // Tally exports by type for the week
+  const exportCounts = { pdf: 0, csv: 0 };
+  for (const row of exportsByType ?? []) {
+    if (row.export_type === "pdf") exportCounts.pdf++;
+    else if (row.export_type === "csv") exportCounts.csv++;
+  }
+
   return NextResponse.json({
     ingestion: {
       recentRuns: runs ?? [],
@@ -95,7 +120,14 @@ export async function GET() {
       totalSkipped,
       failedRuns,
       avgLatencyMs,
-      fallbackRate: null, // Would require per-run fallback tracking — future enhancement
+      fallbackRate,
+      totalTokensRecent,
+      estimatedCostUsd,
+    },
+    exports: {
+      today: exportsToday ?? 0,
+      thisWeek: exportsWeek ?? 0,
+      byType: exportCounts,
     },
     users: byPlan,
     generatedAt: now.toISOString(),

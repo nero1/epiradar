@@ -17,6 +17,8 @@ interface AiPipeline {
   failedRuns: number;
   avgLatencyMs: number | null;
   fallbackRate: number | null;
+  totalTokensRecent: number;
+  estimatedCostUsd: number | null;
 }
 
 interface Stats {
@@ -28,6 +30,11 @@ interface Stats {
     sourceHealth: SourceHealth[];
   };
   aiPipeline: AiPipeline;
+  exports: {
+    today: number;
+    thisWeek: number;
+    byType: { pdf: number; csv: number };
+  };
   users: { free: number; paid: number };
 }
 
@@ -214,6 +221,17 @@ export default function AdminClient() {
                 {statBox("Paid Users", stats.users.paid)}
               </div>
 
+              {/* Export volume */}
+              <div style={card}>
+                <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Export Volume</h2>
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Exports today: </span><strong>{stats.exports?.today ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Exports (7d): </span><strong>{stats.exports?.thisWeek ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>PDF (7d): </span><strong>{stats.exports?.byType?.pdf ?? 0}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>CSV (7d): </span><strong>{stats.exports?.byType?.csv ?? 0}</strong></div>
+                </div>
+              </div>
+
               {/* AI Pipeline stats */}
               <div style={card}>
                 <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>AI Pipeline Stats</h2>
@@ -222,6 +240,9 @@ export default function AdminClient() {
                   <div><span style={{ color: "var(--text-secondary)" }}>Items skipped: </span><strong>{stats.aiPipeline.totalSkipped}</strong></div>
                   <div><span style={{ color: "var(--text-secondary)" }}>Failed runs: </span><strong style={{ color: stats.aiPipeline.failedRuns > 0 ? "#DC2626" : "inherit" }}>{stats.aiPipeline.failedRuns}</strong></div>
                   <div><span style={{ color: "var(--text-secondary)" }}>Avg latency: </span><strong>{stats.aiPipeline.avgLatencyMs != null ? `${(stats.aiPipeline.avgLatencyMs / 1000).toFixed(1)}s` : "—"}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Fallback rate: </span><strong style={{ color: (stats.aiPipeline.fallbackRate ?? 0) > 20 ? "#D97706" : "inherit" }}>{stats.aiPipeline.fallbackRate != null ? `${stats.aiPipeline.fallbackRate}%` : "—"}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Tokens (10 runs): </span><strong>{stats.aiPipeline.totalTokensRecent != null ? stats.aiPipeline.totalTokensRecent.toLocaleString() : "—"}</strong></div>
+                  <div><span style={{ color: "var(--text-secondary)" }}>Est. cost: </span><strong>{stats.aiPipeline.estimatedCostUsd != null ? `$${stats.aiPipeline.estimatedCostUsd}` : "—"}</strong></div>
                 </div>
               </div>
 
@@ -447,7 +468,32 @@ export default function AdminClient() {
             <button onClick={handleSaveTheme} disabled={isPending} style={{ padding: "9px 18px", background: "var(--color-brand)", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Save theme</button>
             <button onClick={() => handleActivateTheme(themeName || "custom")} disabled={isPending} style={{ padding: "9px 18px", background: "transparent", color: "var(--color-brand)", border: "1px solid var(--color-brand)", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Activate</button>
           </div>
-          {themeMsg && <p style={{ marginTop: 10, fontSize: 13, color: themeMsg.includes("saved") || themeMsg.includes("activated") ? "#16A34A" : "#DC2626" }}>{themeMsg}</p>}
+          {themeMsg && <p style={{ marginTop: 10, fontSize: 13, color: themeMsg.includes("saved") || themeMsg.includes("activated") || themeMsg.includes("deleted") ? "#16A34A" : "#DC2626" }}>{themeMsg}</p>}
+
+          {/* Existing themes list with delete */}
+          {availableThemes.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Saved Themes</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {availableThemes.map((t) => (
+                  <div key={t} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-page)" }}>
+                    <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)" }}>{t}</span>
+                    <button onClick={() => handleActivateTheme(t)} style={{ ...actionBtnStyle("var(--color-brand)"), fontSize: 11 }}>Activate</button>
+                    <button
+                      onClick={async () => {
+                        await fetch(`/api/admin/themes?name=${encodeURIComponent(t)}`, { method: "DELETE" });
+                        setAvailableThemes((prev) => prev.filter((n) => n !== t));
+                        setThemeMsg(`Theme "${t}" deleted.`);
+                      }}
+                      style={{ ...actionBtnStyle("#DC2626"), fontSize: 11 }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

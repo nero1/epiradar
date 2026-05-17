@@ -108,4 +108,66 @@ test.describe("API endpoints (public)", () => {
     const res = await request.get(`${BASE_URL}/api/v1/watchlists`);
     expect(res.status()).toBe(401);
   });
+
+  test("PATCH /api/v1/watchlists requires auth", async ({ request }) => {
+    const res = await request.patch(`${BASE_URL}/api/v1/watchlists?id=test-id`, {
+      data: { alert_mode: "immediate" },
+    });
+    expect(res.status()).toBe(401);
+  });
+});
+
+test.describe("Offline / PWA", () => {
+  test("offline banner appears when network is disabled", async ({ page, context }) => {
+    await page.goto(BASE_URL);
+    // Simulate offline by cutting off all network requests
+    await context.setOffline(true);
+    // Trigger a navigation or DOM event to wake the online-status hook
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    // The offline banner should become visible
+    await expect(page.locator('[data-testid="offline-banner"], text=/offline|no connection/i').first()).toBeVisible({ timeout: 6000 });
+  });
+
+  test("page shell still renders from service worker cache when offline", async ({ page, context }) => {
+    // Warm the page once while online
+    await page.goto(BASE_URL);
+    await page.waitForLoadState("networkidle");
+    // Go offline
+    await context.setOffline(true);
+    // Reload — should render from SW cache, not blank
+    await page.reload({ waitUntil: "domcontentloaded" });
+    // Title must still be present (page not blank)
+    await expect(page).toHaveTitle(/EpiRadar/i);
+  });
+
+  test("back online: offline banner disappears", async ({ page, context }) => {
+    await page.goto(BASE_URL);
+    await context.setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    // Restore network
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    // Banner should disappear within a few seconds
+    const banner = page.locator('[data-testid="offline-banner"], text=/offline/i').first();
+    await expect(banner).toBeHidden({ timeout: 6000 });
+  });
+
+  test("service worker registers successfully", async ({ page }) => {
+    await page.goto(BASE_URL);
+    await page.waitForLoadState("networkidle");
+    const swRegistered = await page.evaluate(async () => {
+      if (!("serviceWorker" in navigator)) return false;
+      const regs = await navigator.serviceWorker.getRegistrations();
+      return regs.length > 0;
+    });
+    expect(swRegistered).toBe(true);
+  });
+
+  test("manifest.json is served and parseable", async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/manifest.json`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("name");
+    expect(body).toHaveProperty("icons");
+  });
 });

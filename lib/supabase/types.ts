@@ -80,6 +80,26 @@ export interface BillingEvent {
   created_at: string;
 }
 
+export interface Report {
+  id: string;
+  user_id: string;
+  country_iso: string | null;
+  pathogen: string | null;
+  content: string;
+  based_on_alerts: number;
+  generated_at: string;
+}
+
+export type ExportType = "pdf" | "csv";
+
+export interface ExportLog {
+  id: string;
+  user_id: string;
+  export_type: ExportType;
+  alert_id: string | null;
+  created_at: string;
+}
+
 /** Required by Supabase GenericTable constraint */
 type Relationships = never[];
 
@@ -119,6 +139,18 @@ export interface Database {
         Row: BillingEvent;
         Insert: Omit<BillingEvent, "id" | "created_at"> & { id?: string };
         Update: Partial<Omit<BillingEvent, "id" | "created_at">>;
+        Relationships: Relationships;
+      };
+      reports: {
+        Row: Report;
+        Insert: Omit<Report, "id" | "generated_at"> & { id?: string };
+        Update: Partial<Omit<Report, "id" | "generated_at">>;
+        Relationships: Relationships;
+      };
+      export_logs: {
+        Row: ExportLog;
+        Insert: Omit<ExportLog, "id" | "created_at"> & { id?: string };
+        Update: never;
         Relationships: Relationships;
       };
     };

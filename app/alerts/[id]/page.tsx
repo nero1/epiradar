@@ -71,9 +71,33 @@ export default async function AlertDetailPage({ params }: Props) {
   const riskScore = Number(alert.risk_score);
   const userPlan = (user?.plan ?? null) as "public" | "free" | "paid" | null;
   const alertTitle = `${alert.pathogen ?? "Outbreak"} in ${alert.country_iso.join(", ")}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://epiradar.io";
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    headline: alertTitle,
+    description: alert.ai_summary ?? `Outbreak risk score: ${riskScore}/100`,
+    url: `${appUrl}/alerts/${alert.id}`,
+    datePublished: alert.published_at,
+    dateModified: alert.ingested_at,
+    publisher: {
+      "@type": "Organization",
+      name: "EpiRadar",
+      url: appUrl,
+    },
+    about: alert.pathogen
+      ? [{ "@type": "MedicalCondition", name: alert.pathogen }]
+      : undefined,
+    spatialCoverage: alert.country_iso.map((iso) => ({
+      "@type": "Country",
+      identifier: iso,
+    })),
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header />
       <OfflineBanner />
 

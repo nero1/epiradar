@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import GoogleSignInButton from "./GoogleSignInButton";
+import TelegramLoginButton from "./TelegramLoginButton";
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -44,6 +45,7 @@ export default function LoginPage() {
         </h1>
 
         <GoogleSignInButton />
+        <TelegramLoginButton />
 
         <p
           className="mt-6 text-center text-xs"

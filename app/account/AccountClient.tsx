@@ -61,6 +61,16 @@ export default function AccountClient({ user }: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwMsg, setPwMsg] = useState("");
 
+  // Recovery email
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryMsg, setRecoveryMsg] = useState("");
+
+  // CSV export
+  const [csvCountry, setCsvCountry] = useState("");
+  const [csvPathogen, setCsvPathogen] = useState("");
+  const [csvMsg, setCsvMsg] = useState("");
+  const [csvExporting, setCsvExporting] = useState(false);
+
   // 2FA
   const [totpUri, setTotpUri] = useState("");
   const [totpToken, setTotpToken] = useState("");
@@ -141,6 +151,55 @@ export default function AccountClient({ user }: Props) {
       });
       if (res.ok) { setPwMsg("Password updated."); setNewPassword(""); setConfirmPassword(""); }
       else { const b = await res.json().catch(() => ({})); setPwMsg(b.error ?? "Failed to update password."); }
+    });
+  }
+
+  // --- CSV export ---
+  async function handleCsvExport() {
+    setCsvMsg("");
+    setCsvExporting(true);
+    try {
+      const res = await fetch("/api/v1/exports/csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          countryIso: csvCountry.trim().toUpperCase() || undefined,
+          pathogen: csvPathogen.trim() || undefined,
+          idempotencyKey: `csv-${user.email}-${Date.now()}`,
+        }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        setCsvMsg(b.error ?? "Export failed.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `epiradar-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setCsvMsg("Download started.");
+    } finally {
+      setCsvExporting(false);
+    }
+  }
+
+  // --- Recovery email ---
+  async function handleSaveRecoveryEmail() {
+    if (!recoveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) {
+      setRecoveryMsg("Enter a valid email address.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await fetch("/api/v1/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recovery_email: recoveryEmail }),
+      });
+      if (res.ok) { setRecoveryMsg("Recovery email saved."); setRecoveryEmail(""); }
+      else { setRecoveryMsg("Failed to save recovery email."); }
     });
   }
 
@@ -330,6 +389,36 @@ export default function AccountClient({ user }: Props) {
       {/* Security tab */}
       {tab === "security" && (
         <>
+          {/* 2FA encouragement banner for paid users who haven't set it up (PRD §4.4) */}
+          {user.plan === "paid" && !user.totp_secret && (
+            <div style={{
+              marginBottom: 16,
+              padding: "14px 18px",
+              borderRadius: 8,
+              background: "#FEF3C7",
+              border: "1px solid #F59E0B",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+            }}>
+              <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>⚠</span>
+              <div>
+                <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 13, color: "#92400E" }}>
+                  Secure your paid account with two-factor authentication
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: "#92400E" }}>
+                  Your account has access to sensitive data and API keys. Enable 2FA below to protect it.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab("security")}
+                style={{ marginLeft: "auto", flexShrink: 0, background: "#F59E0B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                Set up 2FA ↓
+              </button>
+            </div>
+          )}
+
           <div style={cardStyle}>
             <h2 style={{ margin: "0 0 16px", fontSize: 16, color: "var(--text-primary)" }}>Change Password</h2>
             <div style={{ marginBottom: 12 }}>
@@ -342,6 +431,28 @@ export default function AccountClient({ user }: Props) {
             </div>
             <button style={btnStyle()} onClick={handleChangePassword} disabled={isPending}>Update password</button>
             {pwMsg && <p style={msgStyle(pwMsg === "Password updated.")}>{pwMsg}</p>}
+          </div>
+
+          <div style={cardStyle}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 16, color: "var(--text-primary)" }}>Recovery Email</h2>
+            <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-secondary)" }}>
+              A backup email used if you lose access to your account. Stored securely and never shared.
+            </p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>New recovery email</label>
+              <input
+                style={inputStyle}
+                type="email"
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                placeholder="backup@example.com"
+                autoComplete="email"
+              />
+            </div>
+            <button style={btnStyle()} onClick={handleSaveRecoveryEmail} disabled={isPending}>
+              Save recovery email
+            </button>
+            {recoveryMsg && <p style={msgStyle(recoveryMsg === "Recovery email saved.")}>{recoveryMsg}</p>}
           </div>
 
           <div style={cardStyle}>
@@ -426,17 +537,40 @@ export default function AccountClient({ user }: Props) {
               {user.plan === "paid" ? "Paid users have unlimited PDF exports." : `Free accounts get ${FREE_MONTHLY_PDF} PDF exports per month. Resets on the 1st.`}
             </p>
           </div>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 14, color: "var(--text-primary)" }}>CSV Exports</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{user.plan === "paid" ? "Available" : "Paid only"}</span>
+          {user.plan === "paid" ? (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20, marginTop: 4 }}>
+              <h3 style={{ margin: "0 0 10px", fontSize: 15, color: "var(--text-primary)" }}>Download CSV</h3>
+              <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
+                Export active alerts as CSV. Filter by country ISO (e.g. NG, US) or pathogen name. Leave both blank to export all.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <div>
+                  <label style={labelStyle}>Country ISO</label>
+                  <input style={{ ...inputStyle, width: 100 }} value={csvCountry} onChange={(e) => setCsvCountry(e.target.value)} placeholder="NG" maxLength={2} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Pathogen</label>
+                  <input style={{ ...inputStyle, width: 180 }} value={csvPathogen} onChange={(e) => setCsvPathogen(e.target.value)} placeholder="Mpox" maxLength={100} />
+                </div>
+              </div>
+              <button style={btnStyle()} onClick={handleCsvExport} disabled={csvExporting}>
+                {csvExporting ? "Preparing…" : "Download CSV"}
+              </button>
+              {csvMsg && <p style={msgStyle(csvMsg === "Download started.")}>{csvMsg}</p>}
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>Bulk CSV exports are available on the paid plan.</p>
-          </div>
-          {user.plan !== "paid" && (
-            <a href="/pricing" style={{ display: "inline-block", marginTop: 20, background: "var(--color-brand)", color: "#fff", padding: "9px 20px", borderRadius: 6, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
-              Upgrade for unlimited exports
-            </a>
+          ) : (
+            <>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 14, color: "var(--text-primary)" }}>CSV Exports</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}>Paid only</span>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>Bulk CSV exports are available on the paid plan.</p>
+              </div>
+              <a href="/pricing" style={{ display: "inline-block", marginTop: 20, background: "var(--color-brand)", color: "#fff", padding: "9px 20px", borderRadius: 6, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
+                Upgrade for unlimited exports
+              </a>
+            </>
           )}
         </div>
       )}

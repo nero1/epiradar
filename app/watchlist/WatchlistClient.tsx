@@ -86,6 +86,24 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
     await doAdd(type, value, alertMode);
   }
 
+  async function handleToggleMode(id: string, current: AlertMode) {
+    if (!isOnline) {
+      setOfflineMsg("Cannot update alert mode while offline.");
+      return;
+    }
+    const next: AlertMode = current === "daily" ? "immediate" : "daily";
+    startTransition(async () => {
+      const res = await fetch(`/api/v1/watchlists?id=${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alert_mode: next }),
+      });
+      if (res.ok) {
+        setItems((prev) => prev.map((w) => w.id === id ? { ...w, alert_mode: next } : w));
+      }
+    });
+  }
+
   async function handleDelete(id: string) {
     if (!isOnline) {
       setOfflineMsg("Cannot remove while offline. Will be available when back online.");
@@ -260,22 +278,41 @@ export default function WatchlistClient({ initialWatchlists, plan }: Props) {
                   {TYPE_LABELS[item.type]} · {MODE_LABELS[item.alert_mode]}
                 </div>
               </div>
-              <button
-                onClick={() => handleDelete(item.id)}
-                disabled={isPending}
-                aria-label="Remove watchlist item"
-                style={{
-                  background: "none",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  padding: "5px 10px",
-                  fontSize: 13,
-                  color: "#DC2626",
-                  cursor: "pointer",
-                }}
-              >
-                Remove
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => handleToggleMode(item.id, item.alert_mode)}
+                  disabled={isPending}
+                  aria-label={`Switch to ${item.alert_mode === "daily" ? "immediate" : "daily"} alerts`}
+                  title={item.alert_mode === "daily" ? "Switch to immediate alerts" : "Switch to daily digest"}
+                  style={{
+                    background: "none",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.alert_mode === "daily" ? "→ Immediate" : "→ Daily"}
+                </button>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  disabled={isPending}
+                  aria-label="Remove watchlist item"
+                  style={{
+                    background: "none",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "5px 10px",
+                    fontSize: 13,
+                    color: "#DC2626",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
         </div>

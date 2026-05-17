@@ -84,6 +84,38 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ data }, { status: 201 });
 }
 
+/** PATCH /api/v1/watchlists?id=... — update alert_mode on an existing item */
+export async function PATCH(request: NextRequest) {
+  let user;
+  try {
+    user = await requireAuth();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const body = await request.json().catch(() => null);
+  const parsed = z.object({ alert_mode: z.enum(["daily", "immediate"]) }).safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("watchlists")
+    .update({ alert_mode: parsed.data.alert_mode })
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (error || !data) return NextResponse.json({ error: "Failed to update watchlist" }, { status: 500 });
+
+  return NextResponse.json({ data });
+}
+
 /** DELETE /api/v1/watchlists?id=... — remove a watchlist item */
 export async function DELETE(request: NextRequest) {
   let user;

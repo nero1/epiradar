@@ -208,3 +208,107 @@ If you need to restore from backup:
 1. Download backup from Supabase dashboard
 2. `psql $DATABASE_URL < backup.sql`
 3. Verify RLS policies are intact: `\dp` in psql
+
+---
+
+## 11. Protecting Secrets
+
+**What never goes in git:**
+- `.env.local` — add to `.gitignore` (already included)
+- Any file containing `SUPABASE_SERVICE_ROLE_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `PAYSTACK_SECRET_KEY`, `DODOPAYMENTS_API_KEY`, `MAILGUN_API_KEY`, `CRON_SECRET`, `TOTP_ENCRYPTION_KEY`
+
+**Safe to commit:**
+- `.env.local.example` — contains only placeholder values, no real secrets
+- `next.config.ts`, `vercel.json` — contain no secrets
+- Supabase migrations/schema (no credentials inside)
+
+**Production secrets storage:**
+- All secrets go into **Vercel → Settings → Environment Variables** (encrypted at rest)
+- Never log secrets; never return them in API responses
+- `SUPABASE_SERVICE_ROLE_KEY` is server-only — ensure it is never prefixed with `NEXT_PUBLIC_`
+
+---
+
+## 12. Secret Rotation Runbook
+
+Rotate secrets without downtime using this sequence:
+
+### Supabase Service Role Key
+1. In Supabase dashboard → Settings → API → regenerate service role key
+2. Update `SUPABASE_SERVICE_ROLE_KEY` in Vercel environment variables
+3. Trigger a Vercel redeploy
+4. Verify API health at `/api/v1/risk-scores`
+
+### CRON_SECRET
+1. Generate a new secret: `openssl rand -hex 32`
+2. Update `CRON_SECRET` in Vercel environment variables
+3. Update the same secret in all cron-jobs.org job headers
+4. Trigger redeploy — old jobs will 401 until header is updated
+
+### Paystack Secret Key
+1. Roll key in Paystack dashboard → Settings → API Keys
+2. Update `PAYSTACK_SECRET_KEY` in Vercel
+3. **Do not** update the webhook signature secret simultaneously — rotate separately
+4. Monitor webhook logs for 401s
+
+### Dodopayments Webhook Secret
+1. Generate new secret in Dodopayments dashboard
+2. Update `DODOPAYMENTS_WEBHOOK_SECRET` in Vercel
+3. Redeploy — there is a ~30s gap where webhooks may fail; Dodopayments will retry
+
+### Mailgun API Key
+1. Create a new API key in Mailgun dashboard
+2. Update `MAILGUN_API_KEY` in Vercel
+3. Old key can be revoked after confirming first successful send
+
+### TOTP Encryption Key
+1. **Warning:** Rotating this key invalidates all existing TOTP setups for users
+2. Generate: `openssl rand -hex 32`
+3. Update `TOTP_ENCRYPTION_KEY` in Vercel
+4. Notify users that 2FA must be re-enrolled
+
+---
+
+## 13. App Update / Deployment Runbook
+
+### Standard update (no schema changes)
+```bash
+git checkout main
+git pull
+# Make changes
+npm test                    # all Vitest tests pass
+npx tsc --noEmit           # TypeScript clean
+git push origin main       # triggers Vercel auto-deploy
+```
+
+### Update with database schema changes
+1. Apply migration to Supabase: paste changes into SQL editor or use `supabase db push`
+2. Verify RLS policies still cover new tables/columns
+3. Update `lib/supabase/types.ts` to match new schema
+4. Deploy app code after schema is live (never before)
+
+### Verifying a deployment
+1. Check Vercel deployment logs for build errors
+2. Hit `/api/v1/risk-scores` — expect 200 with `{"data":[...]}`
+3. Hit `/api/v1/docs` — expect OpenAPI spec JSON
+4. Trigger a manual ingestion: `POST /api/admin/ingest` (requires admin auth)
+
+---
+
+## 14. Rollback Runbook
+
+### Application rollback (Vercel)
+1. Go to Vercel dashboard → Deployments
+2. Find the last known-good deployment
+3. Click **Promote to Production**
+4. No code changes needed — Vercel redeploys that build instantly
+
+### Database rollback
+1. Supabase does not support point-in-time restore on free tier
+2. For paid Supabase: use PITR from dashboard
+3. For free tier: restore from the most recent manual backup (`.sql` file)
+4. Re-run any migrations that were applied after the backup
+
+### Emergency: take site offline
+Set environment variable `MAINTENANCE_MODE=true` and redeploy. (Add a middleware check if needed.)
+

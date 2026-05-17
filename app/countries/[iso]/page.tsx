@@ -6,7 +6,8 @@ import Header from "@/components/layout/Header";
 import BottomToolbar from "@/components/layout/BottomToolbar";
 import OfflineBanner from "@/components/layout/OfflineBanner";
 import DeepReportClient from "@/components/dashboard/DeepReportClient";
-import { getCountrySummary, getCountryRiskScores } from "@/lib/data/alerts";
+import RiskTrendChart from "@/components/dashboard/RiskTrendChart";
+import { getCountrySummary, getCountryRiskScores, getCountryRiskTrend } from "@/lib/data/alerts";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 
 interface Props {
@@ -31,9 +32,17 @@ function getCountryName(iso: string): string {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { iso } = await params;
   const name = getCountryName(iso.toUpperCase());
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://epiradar.io";
   return {
-    title: `${name} — Disease Outbreak Risk`,
-    description: `View active disease outbreak alerts and AI risk scores for ${name}.`,
+    title: `${name} — Disease Outbreak Risk | EpiRadar`,
+    description: `AI-powered disease outbreak risk scores and active alerts for ${name}. Updated daily.`,
+    openGraph: {
+      title: `${name} Outbreak Risk — EpiRadar`,
+      description: `AI-powered disease outbreak risk scores and active alerts for ${name}. Updated daily.`,
+      url: `${appUrl}/countries/${iso.toLowerCase()}`,
+      siteName: "EpiRadar",
+      type: "website",
+    },
   };
 }
 
@@ -75,14 +84,33 @@ export default async function CountryPage({ params }: Props) {
 
   if (!/^[A-Z]{2}$/.test(isoUpper)) notFound();
 
-  const [summary, user] = await Promise.all([getCountrySummary(isoUpper), getAuthenticatedUser()]);
+  const [summary, user, trend] = await Promise.all([
+    getCountrySummary(isoUpper),
+    getAuthenticatedUser(),
+    getCountryRiskTrend(isoUpper),
+  ]);
   if (!summary) notFound();
   const isPaid = user?.plan === "paid";
 
   const countryName = getCountryName(isoUpper);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://epiradar.io";
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: `${countryName} Disease Outbreak Risk`,
+    description: `AI-powered disease outbreak risk scores and active alerts for ${countryName}.`,
+    url: `${appUrl}/countries/${iso}`,
+    publisher: {
+      "@type": "Organization",
+      name: "EpiRadar",
+      url: appUrl,
+    },
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg-page)" }}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header />
       <OfflineBanner />
 
@@ -119,6 +147,16 @@ export default async function CountryPage({ params }: Props) {
             </div>
           </div>
         </div>
+
+        {/* 7-day risk history chart */}
+        {trend.length > 0 && (
+          <div className="mb-6">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              7-Day Risk Trend
+            </h2>
+            <RiskTrendChart initialData={trend} />
+          </div>
+        )}
 
         {/* Active alerts */}
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>

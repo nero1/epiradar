@@ -12,7 +12,47 @@ const ReportSchema = z.object({
 });
 
 /**
- * POST /api/v1/reports — generate a deep AI situation report.
+ * GET /api/v1/reports — list saved AI situation reports for the authenticated user.
+ * Paid tier only. Cursor-based pagination via ?before=<ISO timestamp>.
+ */
+export async function GET(request: NextRequest) {
+  let user;
+  try {
+    user = await requirePaidUser();
+  } catch {
+    return NextResponse.json(
+      { error: "Paid plan required", upgradeUrl: "/pricing" },
+      { status: 403 },
+    );
+  }
+
+  const { searchParams } = new URL(request.url);
+  const before = searchParams.get("before");
+  const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 50);
+
+  const supabase = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase as any)
+    .from("reports")
+    .select("id, country_iso, pathogen, based_on_alerts, generated_at")
+    .eq("user_id", user.id)
+    .order("generated_at", { ascending: false })
+    .limit(limit);
+
+  if (before) query = query.lt("generated_at", before);
+
+  const { data, error } = await query;
+
+  if (error) return NextResponse.json({ error: "Failed to fetch reports" }, { status: 500 });
+
+  const items = data ?? [];
+  const nextCursor = items.length === limit ? items[items.length - 1].generated_at : null;
+
+  return NextResponse.json({ data: items, nextCursor });
+}
+
+/**
+ * POST /api/v1/reports — generate and persist a deep AI situation report.
  * Paid tier only. Rate-limited at 10/hour.
  * Accepts optional countryIso and/or pathogen to scope the report.
  */
@@ -75,10 +115,32 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const report = await generateDeepReport({ countryIso, pathogen, recentAlerts: summaries });
+    const reportContent = await generateDeepReport({ countryIso, pathogen, recentAlerts: summaries });
+    const generatedAt = new Date().toISOString();
+
+    // Persist so users can retrieve later via GET /api/v1/reports
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: saved, error: saveError } = await (supabase as any)
+      .from("reports")
+      .insert({
+        user_id: user.id,
+        country_iso: countryIso ?? null,
+        pathogen: pathogen ?? null,
+        content: reportContent,
+        based_on_alerts: summaries.length,
+        generated_at: generatedAt,
+      })
+      .select("id")
+      .single();
+
+    if (saveError) {
+      console.error("[reports] Failed to persist report:", saveError);
+    }
+
     return NextResponse.json({
-      report,
-      generatedAt: new Date().toISOString(),
+      id: saved?.id ?? null,
+      report: reportContent,
+      generatedAt,
       basedOnAlerts: summaries.length,
     });
   } catch (err) {
