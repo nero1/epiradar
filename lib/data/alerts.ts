@@ -128,6 +128,103 @@ export async function getTopAlerts(limit = 10, includeSummary = false): Promise<
 }
 
 /**
+ * Fetch 7-day risk trend for a specific country — one data point per day.
+ * Used for the country page risk history chart.
+ */
+export async function getCountryRiskTrend(iso: string): Promise<{ date: string; avgRisk: number; alertCount: number }[]> {
+  const redis = getRedisClient();
+  const cacheKey = `risk-trend:country:${iso}`;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch {
+    // Redis unavailable
+  }
+
+  const supabase = createAdminClient();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: alerts } = await supabase
+    .from("alerts")
+    .select("risk_score, ingested_at")
+    .contains("country_iso", [iso])
+    .gte("ingested_at", sevenDaysAgo)
+    .eq("is_active", true);
+
+  if (!alerts || alerts.length === 0) return [];
+
+  const byDate = new Map<string, { total: number; count: number }>();
+  for (const alert of alerts) {
+    const date = alert.ingested_at.slice(0, 10);
+    const entry = byDate.get(date) ?? { total: 0, count: 0 };
+    entry.total += Number(alert.risk_score);
+    entry.count++;
+    byDate.set(date, entry);
+  }
+
+  const trend = Array.from(byDate.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, { total, count }]) => ({ date, avgRisk: Math.round(total / count), alertCount: count }));
+
+  try {
+    await redis.setex(cacheKey, CACHE_TTL.riskScores, JSON.stringify(trend));
+  } catch {
+    // Redis unavailable
+  }
+
+  return trend;
+}
+
+/**
+ * Fetch top pathogens with their alert counts and max risk score.
+ * Used for pathogen static pages and sitemap generation.
+ */
+export async function getTopPathogens(limit = 50): Promise<{ pathogen: string; alertCount: number; maxRisk: number }[]> {
+  const redis = getRedisClient();
+  const cacheKey = "top-pathogens";
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch {
+    // Redis unavailable
+  }
+
+  const supabase = createAdminClient();
+  const { data: alerts } = await supabase
+    .from("alerts")
+    .select("pathogen, risk_score")
+    .eq("is_active", true)
+    .not("pathogen", "is", null);
+
+  if (!alerts) return [];
+
+  const byPathogen = new Map<string, { count: number; maxRisk: number }>();
+  for (const a of alerts) {
+    if (!a.pathogen) continue;
+    const key = a.pathogen as string;
+    const entry = byPathogen.get(key) ?? { count: 0, maxRisk: 0 };
+    entry.count++;
+    entry.maxRisk = Math.max(entry.maxRisk, Number(a.risk_score));
+    byPathogen.set(key, entry);
+  }
+
+  const pathogens = Array.from(byPathogen.entries())
+    .map(([pathogen, { count, maxRisk }]) => ({ pathogen, alertCount: count, maxRisk }))
+    .sort((a, b) => b.maxRisk - a.maxRisk)
+    .slice(0, limit);
+
+  try {
+    await redis.setex(cacheKey, CACHE_TTL.riskScores, JSON.stringify(pathogens));
+  } catch {
+    // Redis unavailable
+  }
+
+  return pathogens;
+}
+
+/**
  * Fetch 7-day global risk trend — one data point per day.
  * Used for the trend chart on the dashboard.
  */
