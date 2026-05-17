@@ -61,6 +61,10 @@ export default function AccountClient({ user }: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwMsg, setPwMsg] = useState("");
 
+  // Recovery email
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryMsg, setRecoveryMsg] = useState("");
+
   // 2FA
   const [totpUri, setTotpUri] = useState("");
   const [totpToken, setTotpToken] = useState("");
@@ -141,6 +145,23 @@ export default function AccountClient({ user }: Props) {
       });
       if (res.ok) { setPwMsg("Password updated."); setNewPassword(""); setConfirmPassword(""); }
       else { const b = await res.json().catch(() => ({})); setPwMsg(b.error ?? "Failed to update password."); }
+    });
+  }
+
+  // --- Recovery email ---
+  async function handleSaveRecoveryEmail() {
+    if (!recoveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) {
+      setRecoveryMsg("Enter a valid email address.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await fetch("/api/v1/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recovery_email: recoveryEmail }),
+      });
+      if (res.ok) { setRecoveryMsg("Recovery email saved."); setRecoveryEmail(""); }
+      else { setRecoveryMsg("Failed to save recovery email."); }
     });
   }
 
@@ -372,6 +393,28 @@ export default function AccountClient({ user }: Props) {
             </div>
             <button style={btnStyle()} onClick={handleChangePassword} disabled={isPending}>Update password</button>
             {pwMsg && <p style={msgStyle(pwMsg === "Password updated.")}>{pwMsg}</p>}
+          </div>
+
+          <div style={cardStyle}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 16, color: "var(--text-primary)" }}>Recovery Email</h2>
+            <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-secondary)" }}>
+              A backup email used if you lose access to your account. Stored securely and never shared.
+            </p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>New recovery email</label>
+              <input
+                style={inputStyle}
+                type="email"
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                placeholder="backup@example.com"
+                autoComplete="email"
+              />
+            </div>
+            <button style={btnStyle()} onClick={handleSaveRecoveryEmail} disabled={isPending}>
+              Save recovery email
+            </button>
+            {recoveryMsg && <p style={msgStyle(recoveryMsg === "Recovery email saved.")}>{recoveryMsg}</p>}
           </div>
 
           <div style={cardStyle}>
