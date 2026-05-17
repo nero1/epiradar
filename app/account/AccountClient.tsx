@@ -65,6 +65,12 @@ export default function AccountClient({ user }: Props) {
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoveryMsg, setRecoveryMsg] = useState("");
 
+  // CSV export
+  const [csvCountry, setCsvCountry] = useState("");
+  const [csvPathogen, setCsvPathogen] = useState("");
+  const [csvMsg, setCsvMsg] = useState("");
+  const [csvExporting, setCsvExporting] = useState(false);
+
   // 2FA
   const [totpUri, setTotpUri] = useState("");
   const [totpToken, setTotpToken] = useState("");
@@ -146,6 +152,38 @@ export default function AccountClient({ user }: Props) {
       if (res.ok) { setPwMsg("Password updated."); setNewPassword(""); setConfirmPassword(""); }
       else { const b = await res.json().catch(() => ({})); setPwMsg(b.error ?? "Failed to update password."); }
     });
+  }
+
+  // --- CSV export ---
+  async function handleCsvExport() {
+    setCsvMsg("");
+    setCsvExporting(true);
+    try {
+      const res = await fetch("/api/v1/exports/csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          countryIso: csvCountry.trim().toUpperCase() || undefined,
+          pathogen: csvPathogen.trim() || undefined,
+          idempotencyKey: `csv-${user.email}-${Date.now()}`,
+        }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        setCsvMsg(b.error ?? "Export failed.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `epiradar-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setCsvMsg("Download started.");
+    } finally {
+      setCsvExporting(false);
+    }
   }
 
   // --- Recovery email ---
@@ -499,17 +537,40 @@ export default function AccountClient({ user }: Props) {
               {user.plan === "paid" ? "Paid users have unlimited PDF exports." : `Free accounts get ${FREE_MONTHLY_PDF} PDF exports per month. Resets on the 1st.`}
             </p>
           </div>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 14, color: "var(--text-primary)" }}>CSV Exports</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{user.plan === "paid" ? "Available" : "Paid only"}</span>
+          {user.plan === "paid" ? (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20, marginTop: 4 }}>
+              <h3 style={{ margin: "0 0 10px", fontSize: 15, color: "var(--text-primary)" }}>Download CSV</h3>
+              <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
+                Export active alerts as CSV. Filter by country ISO (e.g. NG, US) or pathogen name. Leave both blank to export all.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <div>
+                  <label style={labelStyle}>Country ISO</label>
+                  <input style={{ ...inputStyle, width: 100 }} value={csvCountry} onChange={(e) => setCsvCountry(e.target.value)} placeholder="NG" maxLength={2} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Pathogen</label>
+                  <input style={{ ...inputStyle, width: 180 }} value={csvPathogen} onChange={(e) => setCsvPathogen(e.target.value)} placeholder="Mpox" maxLength={100} />
+                </div>
+              </div>
+              <button style={btnStyle()} onClick={handleCsvExport} disabled={csvExporting}>
+                {csvExporting ? "Preparing…" : "Download CSV"}
+              </button>
+              {csvMsg && <p style={msgStyle(csvMsg === "Download started.")}>{csvMsg}</p>}
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>Bulk CSV exports are available on the paid plan.</p>
-          </div>
-          {user.plan !== "paid" && (
-            <a href="/pricing" style={{ display: "inline-block", marginTop: 20, background: "var(--color-brand)", color: "#fff", padding: "9px 20px", borderRadius: 6, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
-              Upgrade for unlimited exports
-            </a>
+          ) : (
+            <>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 14, color: "var(--text-primary)" }}>CSV Exports</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}>Paid only</span>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>Bulk CSV exports are available on the paid plan.</p>
+              </div>
+              <a href="/pricing" style={{ display: "inline-block", marginTop: 20, background: "var(--color-brand)", color: "#fff", padding: "9px 20px", borderRadius: 6, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
+                Upgrade for unlimited exports
+              </a>
+            </>
           )}
         </div>
       )}

@@ -61,6 +61,33 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true, theme: parsed.data }, { status: 201 });
 }
 
+/** DELETE /api/admin/themes?name=... — remove a custom theme */
+export async function DELETE(request: NextRequest) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const name = new URL(request.url).searchParams.get("name");
+  if (!name) return NextResponse.json({ error: "Missing name" }, { status: 400 });
+
+  const redis = getRedisClient();
+  const existing = await redis.get(THEMES_KEY);
+  const themes: Array<{ name: string }> = existing ? JSON.parse(String(existing)) : [];
+  const filtered = themes.filter((t) => t.name !== name);
+
+  await redis.set(THEMES_KEY, JSON.stringify(filtered));
+
+  // If the deleted theme was active, reset to default
+  const activeTheme = await redis.get(ACTIVE_THEME_KEY);
+  if (String(activeTheme) === name) {
+    await redis.set(ACTIVE_THEME_KEY, "default");
+  }
+
+  return NextResponse.json({ success: true });
+}
+
 /** PATCH /api/admin/themes — activate a theme by name */
 export async function PATCH(request: NextRequest) {
   try {

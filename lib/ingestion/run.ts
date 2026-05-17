@@ -12,7 +12,7 @@ export interface IngestionResult {
   itemsSkipped: number;
   itemsFailed: number;
   sourcesFetched: number;
-  errors: Record<string, string>;
+  errors: Record<string, unknown>;
   durationMs: number;
 }
 
@@ -70,6 +70,8 @@ export async function runIngestion(triggeredBy: "cron" | "manual" | "external"):
     // Step 3: Score each new item through AI pipeline (concurrency-limited to avoid rate limits)
     let itemsIngested = 0;
     let itemsFailed = 0;
+    let fallbackCount = 0;
+    let totalTokens = 0;
 
     // Process in batches of 5 to respect AI rate limits
     const BATCH_SIZE = 5;
@@ -85,6 +87,8 @@ export async function runIngestion(triggeredBy: "cron" | "manual" | "external"):
         const result = results[j];
         if (result.status === "fulfilled" && result.value) {
           itemsIngested++;
+          if (result.value.scored.usedFallback) fallbackCount++;
+          totalTokens += result.value.scored.tokensUsed ?? 0;
           if (result.value.insertedId) {
             newlyInserted.push({ id: result.value.insertedId, scored: result.value.scored });
           }
@@ -106,6 +110,12 @@ export async function runIngestion(triggeredBy: "cron" | "manual" | "external"):
 
     const durationMs = Date.now() - startedAt.getTime();
 
+    // Merge AI stats into errors JSONB under reserved _stats key
+    const errorsWithStats = {
+      ...errors,
+      _stats: { fallbacks: fallbackCount, tokens: totalTokens },
+    };
+
     // Update run record with completion
     await supabase
       .from("ingestion_runs")
@@ -114,14 +124,14 @@ export async function runIngestion(triggeredBy: "cron" | "manual" | "external"):
         sources_fetched: sourcesFetched,
         items_ingested: itemsIngested,
         items_skipped: itemsSkipped,
-        errors,
+        errors: errorsWithStats,
         completed_at: new Date().toISOString(),
       })
       .eq("id", runId);
 
-    console.log(`[ingestion] Run ${runId} completed: ${itemsIngested} ingested, ${itemsSkipped} skipped, ${itemsFailed} failed`);
+    console.log(`[ingestion] Run ${runId} completed: ${itemsIngested} ingested, ${itemsSkipped} skipped, ${itemsFailed} failed, ${fallbackCount} fallbacks, ${totalTokens} tokens`);
 
-    return { runId, itemsIngested, itemsSkipped, itemsFailed, sourcesFetched, errors, durationMs };
+    return { runId, itemsIngested, itemsSkipped, itemsFailed, sourcesFetched, errors: errorsWithStats, durationMs };
   } catch (fatalError) {
     // Mark run as failed
     await supabase

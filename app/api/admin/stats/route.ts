@@ -48,13 +48,25 @@ export async function GET() {
   }
 
   // AI pipeline stats derived from ingestion_runs
-  const completedRuns: Array<{ items_ingested: number; items_skipped: number; errors: Record<string, string>; started_at: string; completed_at: string }> = (runs ?? []).filter(
+  const completedRuns: Array<{ items_ingested: number; items_skipped: number; errors: Record<string, unknown>; started_at: string; completed_at: string }> = (runs ?? []).filter(
     (r: { status: string }) => r.status === "completed",
   );
 
   const totalIngested = completedRuns.reduce((s: number, r) => s + (r.items_ingested ?? 0), 0);
   const totalSkipped = completedRuns.reduce((s: number, r) => s + (r.items_skipped ?? 0), 0);
   const failedRuns = (runs ?? []).filter((r: { status: string }) => r.status === "failed").length;
+
+  // Extract _stats stored by runIngestion: fallback counts and token usage
+  let totalFallbacks = 0;
+  let totalTokensRecent = 0;
+  for (const run of completedRuns) {
+    const stats = run.errors?._stats as { fallbacks?: number; tokens?: number } | undefined;
+    totalFallbacks += stats?.fallbacks ?? 0;
+    totalTokensRecent += stats?.tokens ?? 0;
+  }
+  const fallbackRate = totalIngested > 0 ? Math.round((totalFallbacks / totalIngested) * 100) : null;
+  // DeepSeek-chat cost: ~$0.28/M input tokens, ~$1.10/M output tokens; blended estimate ~$0.50/M total
+  const estimatedCostUsd = totalTokensRecent > 0 ? Number(((totalTokensRecent / 1_000_000) * 0.5).toFixed(4)) : null;
 
   // Source health: aggregate errors across recent runs
   const sourceErrors: Record<string, number> = {};
@@ -108,7 +120,9 @@ export async function GET() {
       totalSkipped,
       failedRuns,
       avgLatencyMs,
-      fallbackRate: null, // Requires per-run fallback tracking — future enhancement
+      fallbackRate,
+      totalTokensRecent,
+      estimatedCostUsd,
     },
     exports: {
       today: exportsToday ?? 0,

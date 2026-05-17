@@ -16,6 +16,10 @@ export interface ScoredAlert {
   pathogen: string | null;
   caseCount: number | null;
   deathCount: number | null;
+  /** True when Gemini Flash was used instead of DeepSeek */
+  usedFallback: boolean;
+  /** Total tokens consumed for this alert (prompt + completion) */
+  tokensUsed: number;
 }
 
 /** Zod schema for validating AI output — prevents prompt injection from corrupting DB */
@@ -59,8 +63,8 @@ Content: ${alert.content.slice(0, 3000)}
 Respond with JSON only:`;
 }
 
-/** Call DeepSeek API for scoring */
-async function callDeepSeek(prompt: string): Promise<string> {
+/** Call DeepSeek API for scoring — returns text and token usage */
+async function callDeepSeek(prompt: string): Promise<{ text: string; tokens: number }> {
   assertAllowedUrl("https://api.deepseek.com/chat/completions");
   const response = await fetchWithTimeout(
     "https://api.deepseek.com/chat/completions",
@@ -84,11 +88,14 @@ async function callDeepSeek(prompt: string): Promise<string> {
   if (!response.ok) throw new Error(`DeepSeek returned ${response.status}`);
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "";
+  return {
+    text: data.choices?.[0]?.message?.content ?? "",
+    tokens: data.usage?.total_tokens ?? 0,
+  };
 }
 
-/** Call Gemini Flash API as fallback */
-async function callGemini(prompt: string): Promise<string> {
+/** Call Gemini Flash API as fallback — returns text and token usage */
+async function callGemini(prompt: string): Promise<{ text: string; tokens: number }> {
   assertAllowedUrl("https://generativelanguage.googleapis.com/v1beta/models");
   const response = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.fallback}:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -110,7 +117,10 @@ async function callGemini(prompt: string): Promise<string> {
   if (!response.ok) throw new Error(`Gemini returned ${response.status}`);
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  return {
+    text: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
+    tokens: data.usageMetadata?.totalTokenCount ?? 0,
+  };
 }
 
 /**
@@ -122,19 +132,26 @@ export async function scoreAlert(alert: RawAlert): Promise<ScoredAlert | null> {
   const prompt = buildScoringPrompt(alert);
 
   let rawJson: string;
+  let usedFallback = false;
+  let tokensUsed = 0;
 
   try {
-    rawJson = await withRetry(() => callDeepSeek(prompt), {
+    const result = await withRetry(() => callDeepSeek(prompt), {
       maxAttempts: 2,
       baseDelayMs: 1000,
     });
+    rawJson = result.text;
+    tokensUsed = result.tokens;
   } catch (deepseekError) {
     console.warn("[ai/pipeline] DeepSeek failed, falling back to Gemini:", (deepseekError as Error).message);
     try {
-      rawJson = await withRetry(() => callGemini(prompt), {
+      const result = await withRetry(() => callGemini(prompt), {
         maxAttempts: 2,
         baseDelayMs: 1000,
       });
+      rawJson = result.text;
+      tokensUsed = result.tokens;
+      usedFallback = true;
     } catch (geminiError) {
       console.error("[ai/pipeline] Both AI providers failed:", (geminiError as Error).message);
       return null;
@@ -160,10 +177,10 @@ export async function scoreAlert(alert: RawAlert): Promise<ScoredAlert | null> {
 
   // Apply relevance threshold — discard noise
   if (!scored.isRelevant || scored.riskScore / 100 < RELEVANCE_THRESHOLD * 0.6) {
-    return { ...scored, isRelevant: false };
+    return { ...scored, isRelevant: false, usedFallback, tokensUsed };
   }
 
-  return scored;
+  return { ...scored, usedFallback, tokensUsed };
 }
 
 /** Generate a deep AI country/pathogen report (paid tier only) */
@@ -188,10 +205,10 @@ ${params.pathogen ? `Pathogen focus: ${params.pathogen}` : ""}
 Write the report now:`;
 
   try {
-    const response = await withRetry(() => callDeepSeek(prompt), { maxAttempts: 2 });
-    return response;
+    const result = await withRetry(() => callDeepSeek(prompt), { maxAttempts: 2 });
+    return result.text;
   } catch {
-    const response = await withRetry(() => callGemini(prompt), { maxAttempts: 2 });
-    return response;
+    const result = await withRetry(() => callGemini(prompt), { maxAttempts: 2 });
+    return result.text;
   }
 }
