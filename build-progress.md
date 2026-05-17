@@ -71,6 +71,12 @@ Progress: 100%
 
 ---
 
+[Phase 10][Fourth Audit — Final Three PRD Gaps]
+Fourth full PRD audit (with two parallel agents) found 3 remaining gaps. (1) AI pipeline stats completeness: `callDeepSeek()` and `callGemini()` now return `{ text, tokens }` parsing `usage.total_tokens` / `usageMetadata.totalTokenCount` from API responses; `scoreAlert()` returns `usedFallback: boolean` and `tokensUsed: number` on every result; `runIngestion()` aggregates per-run `fallbackCount` and `totalTokens` and stores them in `ingestion_runs.errors._stats` JSONB; `GET /api/admin/stats` now computes `fallbackRate` (%) and `estimatedCostUsd` (~$0.50/M blended DeepSeek rate) from the 10 most recent completed runs; AdminClient AI Pipeline card now displays all four PRD-required metrics: latency, fallback rate, tokens consumed, estimated cost. (2) Theme deletion: `DELETE /api/admin/themes?name=` removes a theme from Redis and resets the active theme to "default" if necessary; AdminClient Themes tab now lists all saved themes with inline Activate and Delete buttons. (3) CSV export UI: AccountClient Exports tab now shows a "Download CSV" form for paid users with optional country ISO and pathogen filters; on submit it calls `POST /api/v1/exports/csv` and triggers a browser blob download. TypeScript: 0 errors.
+Progress: 100%
+
+---
+
 [Phase 9][Third Audit — Final PRD Gap Closure]
 Third full PRD audit found 3 remaining gaps. (1) Watchlist alert_mode updates: added `PATCH /api/v1/watchlists?id=` endpoint to update alert_mode on existing items; WatchlistClient now renders inline daily/immediate toggle buttons on each row so users can switch without deleting and re-adding. (2) Recovery email in Account settings: Account > Security tab now has a dedicated "Recovery Email" card with input and save handler; `PATCH /api/v1/account/profile` extended to accept `recovery_email` and persist it via `supabase.auth.admin.updateUserById` user_metadata — completing the onboarding promise of "set them later in Account settings". (3) Offline/PWA Playwright tests: 5 new E2E tests added covering offline banner visibility, service worker cache rendering on reload while offline, banner dismissal on reconnect, SW registration check, and manifest.json validity. Also completed pathogen SSG pages, JSON-LD on alert+country pages, country OG metadata, country 7-day risk history chart, and sitemap pathogen entries (committed in previous session). TypeScript: clean (0 errors).
 Progress: 100%
