@@ -71,4 +71,8 @@ Progress: 100%
 
 ---
 
+[Phase 9][Third Audit — Final PRD Gap Closure]
+Third full PRD audit found 3 remaining gaps. (1) Watchlist alert_mode updates: added `PATCH /api/v1/watchlists?id=` endpoint to update alert_mode on existing items; WatchlistClient now renders inline daily/immediate toggle buttons on each row so users can switch without deleting and re-adding. (2) Recovery email in Account settings: Account > Security tab now has a dedicated "Recovery Email" card with input and save handler; `PATCH /api/v1/account/profile` extended to accept `recovery_email` and persist it via `supabase.auth.admin.updateUserById` user_metadata — completing the onboarding promise of "set them later in Account settings". (3) Offline/PWA Playwright tests: 5 new E2E tests added covering offline banner visibility, service worker cache rendering on reload while offline, banner dismissal on reconnect, SW registration check, and manifest.json validity. Also completed pathogen SSG pages, JSON-LD on alert+country pages, country OG metadata, country 7-day risk history chart, and sitemap pathogen entries (committed in previous session). TypeScript: clean (0 errors).
+Progress: 100%
+
 ---
