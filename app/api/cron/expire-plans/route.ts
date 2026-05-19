@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/cron/expire-plans — downgrades paid users whose grace period has expired.
- * Runs every 6 hours (configured in vercel.json).
+ * Vercel Hobby plan only supports once-daily cron; vercel.json schedules this at 02:00 UTC
+ * as the baseline. For tighter expiry enforcement (e.g. every 6 hours), configure a
+ * supplementary job on cron-jobs.org — see docs/SETUP.md §5 for details.
  * Secured via CRON_SECRET bearer token.
  *
  * Flow: payment fails → webhook sets plan_expires_at = NOW() + 3 days

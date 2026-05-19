@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 /**
  * Hard-delete CRON — purges user accounts soft-deleted more than 30 days ago.
- * Runs daily at 03:00 UTC (configured in vercel.json).
+ * Vercel Hobby plan only supports once-daily cron; vercel.json schedules this at 03:00 UTC.
+ * This job is inherently daily, so no supplementary cron-jobs.org job is needed.
  * Secured with CRON_SECRET bearer token.
  *
  * Deletion order respects FK constraints:

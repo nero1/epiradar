@@ -4,11 +4,11 @@ import { runIngestion } from "@/lib/ingestion/run";
 
 /**
  * CRON ingestion endpoint.
- * Called by Vercel CRON (once daily at 06:00 UTC) and cron-jobs.org (every 4 hours).
+ * Vercel Hobby plan only supports once-daily cron; vercel.json schedules this at 06:00 UTC
+ * as the baseline. For higher-frequency ingestion (e.g. every 4 hours), configure a
+ * supplementary job on cron-jobs.org — see docs/SETUP.md §5 for details.
  * Secured via Authorization: Bearer {CRON_SECRET} header — returns 401 without it.
  * Each run is idempotent: already-ingested items are skipped via content hash dedup.
- *
- * Setup: see docs/SETUP.md for cron-jobs.org configuration.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");

@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/expire-plans",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/cron/hard-delete",

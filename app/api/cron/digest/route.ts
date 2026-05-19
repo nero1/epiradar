@@ -7,7 +7,8 @@ import type { Watchlist } from "@/lib/supabase/types";
 
 /**
  * CRON digest endpoint — sends daily watchlist alert digests.
- * Called once daily (configured in vercel.json).
+ * Vercel Hobby plan only supports once-daily cron; vercel.json schedules this at 07:00 UTC.
+ * This job is inherently daily, so no supplementary cron-jobs.org job is needed.
  * Secured via CRON_SECRET bearer token.
  * Only sends to users with alert_mode="daily" watchlist items.
  */
