@@ -119,19 +119,50 @@ In your Supabase project:
 
 ## 5. CRON Setup
 
-### Vercel (primary)
-`vercel.json` includes two CRON jobs:
-- **Ingestion** (`/api/cron/ingest`): daily at 06:00 UTC
-- **Email digest** (`/api/cron/digest`): daily at 07:00 UTC
+### Architecture: two-tier cron
 
-Both require `Authorization: Bearer {CRON_SECRET}` — Vercel sends this automatically when you set the env var.
+The Vercel Hobby (free) plan only executes cron jobs **once per day** maximum.
+`vercel.json` uses this once-daily slot as the baseline for every endpoint.
+For jobs that benefit from higher-frequency runs (ingestion, plan expiry), a
+supplementary external scheduler — [cron-jobs.org](https://cron-jobs.org) (free tier) —
+calls the same endpoints more frequently with an `Authorization: Bearer {CRON_SECRET}`
+header for authentication.
 
-### cron-jobs.org (supplementary — higher frequency ingestion)
-1. Create a free account at cron-jobs.org
-2. Add a job pointing to `https://your-domain.com/api/cron/ingest`
-3. Set schedule: every 4 hours
-4. Add header: `Authorization: Bearer {your-CRON_SECRET}`
-5. Add header: `x-cron-source: external`
+All cron endpoints are idempotent, so being called from both Vercel and cron-jobs.org
+on the same day is safe.
+
+### Vercel (baseline — once daily)
+
+`vercel.json` schedules all five jobs:
+
+| Endpoint | Schedule | Purpose |
+|---|---|---|
+| `/api/cron/ingest` | 06:00 UTC daily | Fetch and ingest new disease alerts |
+| `/api/cron/digest` | 07:00 UTC daily | Send watchlist email digests to paid users |
+| `/api/cron/expire-plans` | 02:00 UTC daily | Downgrade users whose paid plan has lapsed |
+| `/api/cron/hard-delete` | 03:00 UTC daily | Purge accounts soft-deleted 30+ days ago |
+| `/api/cron/reset-quotas` | 00:00 UTC on the 1st | Reset monthly PDF export quotas |
+
+Vercel sends `Authorization: Bearer {CRON_SECRET}` automatically when the env var is set.
+
+### cron-jobs.org (supplementary — higher frequency)
+
+For endpoints where daily is not frequent enough, add supplementary jobs on cron-jobs.org:
+
+**`/api/cron/ingest` — recommended every 4 hours**
+1. Create a free account at [cron-jobs.org](https://cron-jobs.org)
+2. Add a job: URL → `https://your-domain.com/api/cron/ingest`
+3. Schedule: every 4 hours
+4. Add request header: `Authorization: Bearer {your-CRON_SECRET}`
+5. Add request header: `x-cron-source: external`
+
+**`/api/cron/expire-plans` — recommended every 6 hours**
+1. Add a second job: URL → `https://your-domain.com/api/cron/expire-plans`
+2. Schedule: every 6 hours
+3. Add request header: `Authorization: Bearer {your-CRON_SECRET}`
+
+The remaining three endpoints (`digest`, `hard-delete`, `reset-quotas`) are
+daily or monthly by design — Vercel's once-daily cron is sufficient for them.
 
 ---
 

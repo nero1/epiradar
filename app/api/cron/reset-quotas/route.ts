@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/cron/reset-quotas — resets monthly PDF export quotas for all free users.
- * Runs on the 1st of every month (configured in vercel.json).
+ * Runs on the 1st of every month at 00:00 UTC (configured in vercel.json).
+ * Monthly frequency is well within the Vercel Hobby plan's once-daily limit; no
+ * supplementary cron-jobs.org job is needed for this endpoint.
  * Secured via CRON_SECRET bearer token.
  * Calls the atomic DB function to prevent race conditions.
  */
