@@ -2,7 +2,6 @@ import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV for GCM
-const TAG_LENGTH = 16; // 128-bit auth tag
 
 /**
  * Derives a 32-byte encryption key from TOTP_ENCRYPTION_KEY env var.
