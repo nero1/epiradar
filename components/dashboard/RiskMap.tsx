@@ -35,7 +35,7 @@ export default function RiskMap({ initialScores = [] }: RiskMapProps) {
   const leafletMapRef = useRef<any>(null);
   const [scores, setScores] = useState<CountryRiskScore[]>(initialScores);
   const [isLoading, setIsLoading] = useState(initialScores.length === 0);
-  const [tooltip, setTooltip] = useState<{ country: string; score: number; x: number; y: number } | null>(null);
+  const [tooltip] = useState<{ country: string; score: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (initialScores.length === 0) {
@@ -88,9 +88,6 @@ export default function RiskMap({ initialScores = [] }: RiskMapProps) {
       }
     };
   }, []);
-
-  // Build score lookup for rendering
-  const scoreByIso = new Map(scores.map((s) => [s.countryIso, s]));
 
   return (
     <div className="relative h-full w-full">
