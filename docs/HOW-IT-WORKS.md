@@ -242,7 +242,7 @@ The admin panel is at `/admin`. Access requires `is_admin = true` in the `users`
 
 **Users**
 - Paginated user table (search by email or name)
-- Actions: Suspend/restore (sets `suspended_at`), change plan (free↔paid), toggle admin, impersonate (Supabase magic link, audit-logged)
+- Actions: Suspend/restore (sets `suspended_at`), change plan (free↔paid), toggle admin, set theme (audit-logged)
 - Self-demotion is blocked in the API handler
 
 **Revenue**
@@ -268,21 +268,21 @@ The admin panel is at `/admin`. Access requires `is_admin = true` in the `users`
 **Export Volume**
 - PDF and CSV export counts: today vs 7-day rolling
 
-All mutations (suspend, plan change, admin toggle, impersonation, theme activation) are written to `admin_audit_log` with the acting admin's ID.
+All mutations (suspend, plan change, admin toggle, theme activation) are written to `admin_audit_log` with the acting admin's ID.
 
 ---
 
 ## 13. Quota and Billing Logic
 
 ### PDF Export Quota
-Free users get **3 PDF exports per calendar month**. The quota is stored in `users.pdf_exports_used` (integer). On each export:
+Free users get **3 PDF exports per calendar month**. The quota is stored in `users.pdf_export_count` (integer). On each export:
 
 1. API calls the Postgres function `decrement_pdf_export_quota(user_id)` via Supabase RPC
-2. The function checks `pdf_exports_used < 3` and atomically increments the counter within a single transaction
+2. The function checks `pdf_export_count < 3` and atomically increments the counter within a single transaction
 3. It returns `true` if allowed, `false` if quota exhausted
 4. This prevents race conditions — two simultaneous export requests cannot both succeed when 1 quota remains
 
-On the 1st of each month, `/api/cron/reset-quotas` resets `pdf_exports_used = 0` for all free users.
+On the 1st of each month, `/api/cron/reset-quotas` resets `pdf_export_count = 0` for all free users.
 
 All quota math uses **Decimal.js** to avoid floating-point representation errors.
 
@@ -293,6 +293,8 @@ When a payment webhook arrives (`charge.success` from Paystack, `payment.succeed
 3. `users.plan = "paid"` and `plan_expires_at = now() + 30 days`
 
 The `/api/cron/expire-plans` job runs every 6 hours and downgrades users whose `plan_expires_at` is in the past back to `"free"`.
+
+- External/untrusted text is HTML-escaped before interpolation into PDF/email templates to reduce XSS/injection risk.
 
 ### Grace Period
 If a payment fails (e.g., renewal), a 3-day grace period is applied: `plan_expires_at` is extended by 3 days rather than immediately downgrading. If payment is not resolved within the grace window, the next plan expiry CRON will downgrade the account.
@@ -329,6 +331,7 @@ All endpoints are under `/api/v1/`. Full OpenAPI 3.1 spec is at `GET /api/v1/doc
 | POST | `/api/v1/account/password` | Free+ | Change password |
 | POST | `/api/v1/account/totp/setup` | Free+ | Begin TOTP setup |
 | POST | `/api/v1/account/totp/verify` | Free+ | Activate TOTP after verification |
+| POST | `/api/v1/account/totp/recovery` | Free+ | Verify and consume one-time MFA backup recovery code |
 | POST | `/api/v1/account/pin` | Free+ | Set / update PIN |
 | DELETE | `/api/v1/account/pin` | Free+ | Remove PIN |
 | PATCH | `/api/v1/account/pin` | Free+ | Verify PIN |

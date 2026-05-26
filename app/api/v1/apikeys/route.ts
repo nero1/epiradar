@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { requirePaidUser } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import { generateApiKey } from "@/lib/billing/apikey";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 /**
  * GET /api/v1/apikeys — return current API key status (hashed, not the raw key).
@@ -26,7 +28,11 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requirePaidUser();
@@ -36,9 +42,8 @@ export async function POST() {
 
   const { key, hash } = generateApiKey();
 
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const supabase = await createServerClientInstance();
+  const { error } = await supabase
     .from("users")
     .update({ api_key_hash: hash })
     .eq("id", user.id);
@@ -51,7 +56,11 @@ export async function POST() {
   }, { status: 201 });
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requirePaidUser();
@@ -59,9 +68,8 @@ export async function DELETE() {
     return NextResponse.json({ error: "Paid plan required", upgradeUrl: "/pricing" }, { status: 403 });
   }
 
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const supabase = await createServerClientInstance();
+  const { error } = await supabase
     .from("users")
     .update({ api_key_hash: null })
     .eq("id", user.id);

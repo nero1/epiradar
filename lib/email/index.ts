@@ -1,5 +1,7 @@
 import { withRetry } from "@/lib/utils/retry";
 import { getRedisClient } from "@/lib/redis/client";
+import { safeFetch } from "@/lib/utils/safeFetch";
+import { escapeHtml } from "@/lib/utils/encoding";
 
 /** Email message payload */
 export interface EmailMessage {
@@ -46,7 +48,7 @@ async function sendViaMailgun(email: EmailMessage): Promise<void> {
   formData.append("subject", email.subject);
   formData.append("html", email.html);
 
-  const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+  const response = await safeFetch(`https://api.mailgun.net/v3/${domain}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
@@ -74,7 +76,14 @@ async function sendViaMailgun(email: EmailMessage): Promise<void> {
  * Idempotency is enforced via Redis — safe to call on CRON re-runs.
  */
 export async function sendEmail(email: EmailMessage): Promise<void> {
-  await withRetry(() => sendViaMailgun(email), { maxAttempts: 3, baseDelayMs: 500 });
+  await withRetry(() => sendViaMailgun(email), {
+    maxAttempts: 3,
+    baseDelayMs: 500,
+    retryIf: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return /429|5\d\d|timed out|network|fetch/i.test(msg);
+    },
+  });
 }
 
 /** Build an HTML alert digest email for a user's watchlist */
@@ -87,8 +96,8 @@ export function buildAlertDigestHtml(alerts: AlertDigestItem[], userName: string
       (a) => `
       <tr>
         <td style="padding:12px;border-bottom:1px solid #E5E7EB;">
-          <strong style="color:#111827;">${a.pathogen ?? "Unknown pathogen"}</strong>
-          <br><span style="color:#6B7280;font-size:12px;">${a.countryIso.join(", ")}</span>
+          <strong style="color:#111827;">${escapeHtml(a.pathogen ?? "Unknown pathogen")}</strong>
+          <br><span style="color:#6B7280;font-size:12px;">${escapeHtml(a.countryIso.join(", "))}</span>
         </td>
         <td style="padding:12px;border-bottom:1px solid #E5E7EB;text-align:center;">
           <span style="background:${a.riskScore >= 75 ? "#FEE2E2" : a.riskScore >= 50 ? "#FFEDD5" : "#FEF3C7"};
@@ -98,8 +107,8 @@ export function buildAlertDigestHtml(alerts: AlertDigestItem[], userName: string
           </span>
         </td>
         <td style="padding:12px;border-bottom:1px solid #E5E7EB;color:#374151;font-size:13px;">
-          ${a.aiSummary.slice(0, 150)}…
-          <br><a href="${a.alertUrl}" style="color:#1A5C4A;font-size:12px;">Read more →</a>
+          ${escapeHtml(a.aiSummary.slice(0, 150))}…
+          <br><a href="${escapeHtml(a.alertUrl)}" style="color:#1A5C4A;font-size:12px;">Read more →</a>
         </td>
       </tr>
     `,
@@ -113,7 +122,7 @@ export function buildAlertDigestHtml(alerts: AlertDigestItem[], userName: string
       <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
         <div style="background:#1A5C4A;padding:20px 24px;">
           <h1 style="color:#fff;margin:0;font-size:20px;">EpiRadar Alert Digest</h1>
-          <p style="color:#A7F3D0;margin:4px 0 0;font-size:13px;">Hello ${userName} — here are your latest watchlist alerts</p>
+          <p style="color:#A7F3D0;margin:4px 0 0;font-size:13px;">Hello ${escapeHtml(userName)} — here are your latest watchlist alerts</p>
         </div>
         <table style="width:100%;border-collapse:collapse;">
           <thead>

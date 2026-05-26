@@ -30,8 +30,10 @@ export async function GET() {
 
   const allEvents: Array<{ user_id: string; amount: number; currency: string; provider: string; event_type: string; created_at: string }> = events ?? [];
 
-  // Normalise to USD cents (NGN: 1 USD ≈ 1500 NGN)
-  const NGN_TO_USD_CENTS = new Decimal(100).div(1500);
+  // Normalize to USD cents via configurable FX rate.
+  // billing_events.amount is treated as minor units (cents/kobo).
+  const ngnPerUsd = new Decimal(process.env.NGN_PER_USD ?? "1500");
+  const NGN_TO_USD_CENTS = new Decimal(100).div(ngnPerUsd);
 
   function toUsdCents(amount: number, currency: string): Decimal {
     if (currency === "USD") return new Decimal(amount);
@@ -82,6 +84,7 @@ export async function GET() {
       thisMonth: mrrThis.toFixed(2),
       lastMonth: mrrLast.toFixed(2),
       currency: "USD",
+      unit: "cents",
     },
     subscriptions: {
       activePaid: paidUsers ?? 0,

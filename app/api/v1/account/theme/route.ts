@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { requireRecentAuth } from "@/lib/auth/session";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import { getRedisClient } from "@/lib/redis/client";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const THEMES_KEY = "admin:themes";
 const ACTIVE_THEME_KEY = "admin:activeTheme";
@@ -15,7 +16,7 @@ const ACTIVE_THEME_KEY = "admin:activeTheme";
 export async function GET() {
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -45,6 +46,10 @@ export async function GET() {
  * Pass null to clear the preference and fall back to the global admin theme.
  */
 export async function PATCH(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requireAuth();
@@ -74,9 +79,8 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const supabase = await createServerClientInstance();
+  const { error } = await supabase
     .from("users")
     .update({ preferred_theme: themeName })
     .eq("id", user.id);

@@ -10,7 +10,11 @@ import type { RawAlert } from "@/lib/ingestion/sources";
  * Processes up to 50 alerts per run to respect AI rate limits.
  * Admin only.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
     await requireAdmin();
   } catch {

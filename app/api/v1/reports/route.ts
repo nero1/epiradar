@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { requirePaidUser } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import { generateDeepReport } from "@/lib/ai/pipeline";
 import { rateLimitExport } from "@/lib/ratelimit";
+import { getIdempotentResponse, reserveIdempotencyKey, setIdempotentResponse } from "@/lib/utils/idempotency";
+import { isSameOriginMutation } from "@/lib/utils/security";
 import { z } from "zod";
 
 const ReportSchema = z.object({
   countryIso: z.string().length(2).toUpperCase().optional(),
   pathogen: z.string().min(1).max(100).optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
 });
 
 /**
@@ -28,11 +31,11 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const before = searchParams.get("before");
-  const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 50);
+  const rawLimit = Number(searchParams.get("limit") ?? "20");
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 20;
 
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = (supabase as any)
+  const supabase = await createServerClientInstance();
+  let query = supabase
     .from("reports")
     .select("id, country_iso, pathogen, based_on_alerts, generated_at")
     .eq("user_id", user.id)
@@ -57,6 +60,10 @@ export async function GET(request: NextRequest) {
  * Accepts optional countryIso and/or pathogen to scope the report.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requirePaidUser();
@@ -81,16 +88,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { countryIso, pathogen } = parsed.data;
+  const { countryIso, pathogen, idempotencyKey } = parsed.data;
   if (!countryIso && !pathogen) {
     return NextResponse.json({ error: "Provide at least one of: countryIso, pathogen" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
+  if (idempotencyKey) {
+    const prior = await getIdempotentResponse<{ id: string | null; report: string; generatedAt: string; basedOnAlerts: number }>(`report:${user.id}`, idempotencyKey);
+    if (prior) return NextResponse.json(prior);
+
+    const reserved = await reserveIdempotencyKey(`report:${user.id}`, idempotencyKey);
+    if (!reserved) {
+      return NextResponse.json({ error: "Duplicate request", code: "IDEMPOTENCY_REPLAY" }, { status: 409 });
+    }
+  }
+
+  const supabase = await createServerClientInstance();
 
   // Fetch recent relevant alerts to ground the report
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = (supabase as any)
+  let query = supabase
     .from("alerts")
     .select("ai_summary, pathogen, country_iso, risk_score")
     .eq("is_active", true)
@@ -119,8 +135,7 @@ export async function POST(request: NextRequest) {
     const generatedAt = new Date().toISOString();
 
     // Persist so users can retrieve later via GET /api/v1/reports
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: saved, error: saveError } = await (supabase as any)
+    const { data: saved, error: saveError } = await supabase
       .from("reports")
       .insert({
         user_id: user.id,
@@ -137,12 +152,18 @@ export async function POST(request: NextRequest) {
       console.error("[reports] Failed to persist report:", saveError);
     }
 
-    return NextResponse.json({
+    const payload = {
       id: saved?.id ?? null,
       report: reportContent,
       generatedAt,
       basedOnAlerts: summaries.length,
-    });
+    };
+
+    if (idempotencyKey) {
+      await setIdempotentResponse(`report:${user.id}`, idempotencyKey, payload);
+    }
+
+    return NextResponse.json(payload);
   } catch (err) {
     console.error("[reports] AI generation failed:", err);
     return NextResponse.json({ error: "Report generation failed" }, { status: 502 });

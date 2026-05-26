@@ -70,6 +70,35 @@ export async function requirePaidUser(): Promise<User> {
 }
 
 /**
+ * Requires the user to have signed in recently (step-up auth guard).
+ * Default freshness window: 15 minutes.
+ */
+export async function requireRecentAuth(maxAgeMinutes = 15): Promise<User> {
+  const supabase = await createServerClientInstance();
+  const {
+    data: { user: authUser },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !authUser) throw new Error("Unauthorized: authentication required");
+
+  const lastSignIn = authUser.last_sign_in_at ? new Date(authUser.last_sign_in_at).getTime() : 0;
+  if (!lastSignIn || Date.now() - lastSignIn > maxAgeMinutes * 60 * 1000) {
+    throw new Error("Reauthentication required");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", authUser.id)
+    .is("deleted_at", null)
+    .single();
+
+  if (profileError || !profile) throw new Error("Unauthorized: authentication required");
+  return profile as User;
+}
+
+/**
  * Authenticate a request via API key (Bearer epk_... header).
  * Validates the key hash, verifies paid plan, updates last-used timestamp.
  * Returns the user on success, null on failure.
