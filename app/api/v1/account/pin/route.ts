@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { requireRecentAuth } from "@/lib/auth/session";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const PinSchema = z.object({
   pin: z.string().regex(/^\d{4}$/, "PIN must be exactly 4 digits"),
@@ -20,9 +21,13 @@ const VerifyPinSchema = z.object({
  * PIN is bcrypt-hashed before storage.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { pin, currentPin } = parsed.data;
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
 
   // If user already has a PIN, verify current PIN before allowing change
   if (user.pin_hash) {
@@ -49,8 +54,7 @@ export async function POST(request: NextRequest) {
 
   const pinHash = await bcrypt.hash(pin, 12);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from("users")
     .update({ pin_hash: pinHash })
     .eq("id", user.id);
@@ -66,9 +70,13 @@ export async function POST(request: NextRequest) {
  * DELETE /api/v1/account/pin — remove PIN (requires current PIN for confirmation).
  */
 export async function DELETE(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -88,9 +96,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Incorrect PIN" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const supabase = await createServerClientInstance();
+  const { error } = await supabase
     .from("users")
     .update({ pin_hash: null })
     .eq("id", user.id);
@@ -107,9 +114,13 @@ export async function DELETE(request: NextRequest) {
  * Returns 200 if correct, 400 if wrong.
  */
 export async function PATCH(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

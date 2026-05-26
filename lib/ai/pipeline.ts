@@ -1,6 +1,6 @@
 import { AI_MODELS, AI_TIMEOUT_MS, RELEVANCE_THRESHOLD } from "./models";
-import { withRetry, fetchWithTimeout } from "@/lib/utils/retry";
-import { assertAllowedUrl } from "@/lib/utils/safeFetch";
+import { withRetry } from "@/lib/utils/retry";
+import { safeFetch } from "@/lib/utils/safeFetch";
 import { z } from "zod";
 import type { RawAlert } from "@/lib/ingestion/sources";
 
@@ -65,10 +65,7 @@ Respond with JSON only:`;
 
 /** Call DeepSeek API for scoring — returns text and token usage */
 async function callDeepSeek(prompt: string): Promise<{ text: string; tokens: number }> {
-  assertAllowedUrl("https://api.deepseek.com/chat/completions");
-  const response = await fetchWithTimeout(
-    "https://api.deepseek.com/chat/completions",
-    {
+  const response = await safeFetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -81,9 +78,7 @@ async function callDeepSeek(prompt: string): Promise<{ text: string; tokens: num
         max_tokens: 512,
         response_format: { type: "json_object" },
       }),
-    },
-    AI_TIMEOUT_MS,
-  );
+    });
 
   if (!response.ok) throw new Error(`DeepSeek returned ${response.status}`);
 
@@ -96,8 +91,7 @@ async function callDeepSeek(prompt: string): Promise<{ text: string; tokens: num
 
 /** Call Gemini Flash API as fallback — returns text and token usage */
 async function callGemini(prompt: string): Promise<{ text: string; tokens: number }> {
-  assertAllowedUrl("https://generativelanguage.googleapis.com/v1beta/models");
-  const response = await fetchWithTimeout(
+  const response = await safeFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.fallback}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: "POST",
@@ -110,9 +104,7 @@ async function callGemini(prompt: string): Promise<{ text: string; tokens: numbe
           responseMimeType: "application/json",
         },
       }),
-    },
-    AI_TIMEOUT_MS,
-  );
+    });
 
   if (!response.ok) throw new Error(`Gemini returned ${response.status}`);
 

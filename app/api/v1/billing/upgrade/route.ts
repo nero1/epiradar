@@ -5,9 +5,12 @@ import { initiatePaystackPayment } from "@/lib/billing/paystack";
 import { createDodoCheckout } from "@/lib/billing/dodopayments";
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
+import { reserveIdempotencyKey } from "@/lib/utils/idempotency";
 
 const UpgradeSchema = z.object({
   provider: z.enum(["paystack", "dodopayments"]),
+  idempotencyKey: z.string().min(1).max(128).optional(),
 });
 
 /** Resolve provider from server-side IP headers, overriding client hint when possible. */
@@ -26,6 +29,10 @@ function resolveProvider(request: NextRequest, clientProvider: "paystack" | "dod
  * Client-supplied provider is used only when no IP header is present.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requireAuth();
@@ -44,7 +51,12 @@ export async function POST(request: NextRequest) {
   }
 
   const provider = resolveProvider(request, parsed.data.provider);
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = parsed.data.idempotencyKey ?? randomUUID();
+
+  const reserved = await reserveIdempotencyKey(`billing:upgrade:${user.id}`, idempotencyKey);
+  if (!reserved) {
+    return NextResponse.json({ error: "Duplicate request", code: "IDEMPOTENCY_REPLAY" }, { status: 409 });
+  }
 
   try {
     if (provider === "paystack") {

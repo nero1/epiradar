@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/server";
+import { withRetry } from "@/lib/utils/retry";
+import { safeFetch } from "@/lib/utils/safeFetch";
 
 export interface PaystackEvent {
   event: string;
@@ -31,21 +33,25 @@ export async function initiatePaystackPayment(params: {
   amountKobo: number;
   idempotencyKey: string;
 }): Promise<{ authorizationUrl: string; reference: string }> {
-  const response = await fetch("https://api.paystack.co/transaction/initialize", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": params.idempotencyKey,
-    },
-    body: JSON.stringify({
-      email: params.email,
-      amount: params.amountKobo,
-      currency: "NGN",
-      metadata: { userId: params.userId },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account?payment=success`,
-    }),
-  });
+  const response = await withRetry(
+    () =>
+      safeFetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": params.idempotencyKey,
+        },
+        body: JSON.stringify({
+          email: params.email,
+          amount: params.amountKobo,
+          currency: "NGN",
+          metadata: { userId: params.userId },
+          callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account?payment=success`,
+        }),
+      }),
+    { maxAttempts: 3, baseDelayMs: 400 },
+  );
 
   if (!response.ok) {
     const body = await response.text();

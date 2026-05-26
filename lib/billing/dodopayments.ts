@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/server";
+import { withRetry } from "@/lib/utils/retry";
+import { safeFetch } from "@/lib/utils/safeFetch";
 
 export interface DodoEvent {
   type: string;
@@ -35,22 +37,26 @@ export async function createDodoCheckout(params: {
   amountUsdCents: number;
   idempotencyKey: string;
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
-  const response = await fetch("https://api.dodopayments.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.DODOPAYMENTS_API_KEY}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": params.idempotencyKey,
-    },
-    body: JSON.stringify({
-      amount: params.amountUsdCents,
-      currency: "USD",
-      customer_email: params.email,
-      metadata: { userId: params.userId },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/account?payment=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
-    }),
-  });
+  const response = await withRetry(
+    () =>
+      safeFetch("https://api.dodopayments.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.DODOPAYMENTS_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": params.idempotencyKey,
+        },
+        body: JSON.stringify({
+          amount: params.amountUsdCents,
+          currency: "USD",
+          customer_email: params.email,
+          metadata: { userId: params.userId },
+          success_url: `${process.env.NEXT_PUBLIC_APP_URL}/account?payment=success`,
+          cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
+        }),
+      }),
+    { maxAttempts: 3, baseDelayMs: 400 },
+  );
 
   if (!response.ok) {
     const body = await response.text();

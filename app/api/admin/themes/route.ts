@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { getRedisClient } from "@/lib/redis/client";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const ThemeSchema = z.object({
   name: z.string().min(1).max(60),
@@ -35,6 +36,10 @@ export async function GET() {
 
 /** POST /api/admin/themes — create or update a custom theme */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
     await requireAdmin();
   } catch {
@@ -63,6 +68,10 @@ export async function POST(request: NextRequest) {
 
 /** DELETE /api/admin/themes?name=... — remove a custom theme */
 export async function DELETE(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
     await requireAdmin();
   } catch {
@@ -90,6 +99,10 @@ export async function DELETE(request: NextRequest) {
 
 /** PATCH /api/admin/themes — activate a theme by name */
 export async function PATCH(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
     await requireAdmin();
   } catch {
