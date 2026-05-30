@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const WatchlistInsertSchema = z.object({
   type: z.enum(["country", "pathogen", "region"]),
@@ -19,7 +20,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
   const { data, error } = await supabase
     .from("watchlists")
     .select("*")
@@ -33,6 +34,10 @@ export async function GET() {
 
 /** POST /api/v1/watchlists — add a watchlist item */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requireAuth();
@@ -46,7 +51,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
 
   // Enforce free-tier watchlist limit (max 3)
   if (user.plan === "free") {
@@ -86,6 +91,10 @@ export async function POST(request: NextRequest) {
 
 /** PATCH /api/v1/watchlists?id=... — update alert_mode on an existing item */
 export async function PATCH(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requireAuth();
@@ -102,7 +111,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
   const { data, error } = await supabase
     .from("watchlists")
     .update({ alert_mode: parsed.data.alert_mode })
@@ -118,6 +127,10 @@ export async function PATCH(request: NextRequest) {
 
 /** DELETE /api/v1/watchlists?id=... — remove a watchlist item */
 export async function DELETE(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requireAuth();
@@ -128,7 +141,7 @@ export async function DELETE(request: NextRequest) {
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
   const { error } = await supabase
     .from("watchlists")
     .delete()

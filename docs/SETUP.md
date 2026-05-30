@@ -77,6 +77,11 @@ Emails are sent **only to paid users**. Free accounts receive no email.
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key (public) |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key (server only) |
 
+### MFA recovery
+
+TOTP setup now returns one-time backup recovery codes. Store them securely; only hashes are persisted.
+Sensitive account mutations (password change, account delete, PIN/TOTP actions) require recent re-authentication.
+
 ### CRON security
 
 | Variable | Description |
@@ -97,8 +102,8 @@ supabase db push
 ```
 
 Key schema elements:
-- **5 tables**: `alerts`, `users`, `watchlists`, `ingestion_runs`, `billing_events`
-- **`admin_audit_log`**: All admin actions are logged here
+- **Core tables**: `users`, `alerts`, `watchlists`, `ingestion_runs`, `billing_events`, `admin_audit_log`, `reports`, `export_logs`
+- **RLS enabled** on user/data tables with ownership/admin policies
 - **RLS policies**: Row-level security on all tables — users can only see/modify their own data
 - **`decrement_pdf_export_quota`**: Atomic Postgres function preventing race conditions on quota
 - **`reset_monthly_pdf_quotas`**: Call on the 1st of each month (or set up a Supabase scheduled function)
@@ -145,20 +150,20 @@ on the same day is safe.
 
 Vercel sends `Authorization: Bearer {CRON_SECRET}` automatically when the env var is set.
 
-### cron-jobs.org (supplementary — higher frequency)
+### cron-jobs.org (supplementary — optional, can be higher frequency)
 
 For endpoints where daily is not frequent enough, add supplementary jobs on cron-jobs.org:
 
-**`/api/cron/ingest` — recommended every 4 hours**
+**`/api/cron/ingest` — recommended every 24 hours (or higher frequency externally if your policy allows)**
 1. Create a free account at [cron-jobs.org](https://cron-jobs.org)
 2. Add a job: URL → `https://your-domain.com/api/cron/ingest`
-3. Schedule: every 4 hours
+3. Schedule: daily at a fixed UTC hour (minimum-cost default)
 4. Add request header: `Authorization: Bearer {your-CRON_SECRET}`
 5. Add request header: `x-cron-source: external`
 
-**`/api/cron/expire-plans` — recommended every 6 hours**
+**`/api/cron/expire-plans` — recommended every 24 hours (or higher frequency externally if your policy allows)**
 1. Add a second job: URL → `https://your-domain.com/api/cron/expire-plans`
-2. Schedule: every 6 hours
+2. Schedule: daily at a fixed UTC hour (minimum-cost default)
 3. Add request header: `Authorization: Bearer {your-CRON_SECRET}`
 
 The remaining three endpoints (`digest`, `hard-delete`, `reset-quotas`) are

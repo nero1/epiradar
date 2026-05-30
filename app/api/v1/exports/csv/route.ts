@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { requirePaidUser } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createServerClientInstance } from "@/lib/supabase/server";
 import { rateLimitExport } from "@/lib/ratelimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
+
+const CsvSchema = z.object({
+  countryIso: z.string().length(2).toUpperCase().optional(),
+  pathogen: z.string().min(1).max(100).optional(),
+  limit: z.number().int().min(1).max(10000).optional(),
+  turnstileToken: z.string().optional(),
+});
 
 
 /**
@@ -12,6 +21,10 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
  * Supports optional filtering by country ISO and/or pathogen.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
     user = await requirePaidUser();
@@ -32,12 +45,11 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const { countryIso, pathogen, limit = 1000, turnstileToken } = body as {
-    countryIso?: string;
-    pathogen?: string;
-    limit?: number;
-    turnstileToken?: string;
-  };
+  const parsed = CsvSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const { countryIso, pathogen, limit = 1000, turnstileToken } = parsed.data;
 
   // Bot protection: verify Turnstile token on export forms (PRD §5.2 / §14)
   const clientIp = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? undefined;
@@ -46,7 +58,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Bot protection failed. Please complete the verification." }, { status: 403 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
 
   let query = supabase
     .from("alerts")

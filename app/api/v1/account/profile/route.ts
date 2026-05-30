@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { requireRecentAuth } from "@/lib/auth/session";
+import { createServerClientInstance, createAdminClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const ProfileSchema = z.object({
   display_name: z.string().min(1).max(80).optional(),
@@ -11,9 +12,13 @@ const ProfileSchema = z.object({
 
 /** PATCH /api/v1/account/profile — update display name and/or recovery email */
 export async function PATCH(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -24,7 +29,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
 
   if (parsed.data.display_name !== undefined) {
     const { error } = await supabase

@@ -6,7 +6,11 @@ import { runIngestion } from "@/lib/ingestion/run";
  * Manual ingestion trigger for admin users.
  * is_admin is verified from the database — never from session alone.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
     await requireAdmin();
   } catch {

@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
+import { requireRecentAuth } from "@/lib/auth/session";
 import { createServerClientInstance } from "@/lib/supabase/server";
 import { z } from "zod";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 const PasswordSchema = z.object({
-  password: z.string().min(8).max(128),
+  password: z.string().min(12).max(128)
+    .regex(/[A-Z]/, "Password must include an uppercase letter")
+    .regex(/[a-z]/, "Password must include a lowercase letter")
+    .regex(/[0-9]/, "Password must include a number")
+    .regex(/[^A-Za-z0-9]/, "Password must include a symbol"),
 });
 
 /** POST /api/v1/account/password — change password via Supabase Auth */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   try {
-    await requireAuth();
+    await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

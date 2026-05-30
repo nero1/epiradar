@@ -28,32 +28,20 @@ export async function GET(request: NextRequest) {
 
   const adminClient = createAdminClient();
 
-  // Check if user profile exists
-  const { data: existingProfile } = await adminClient
+  // Profile creation is handled by DB trigger (handle_new_user).
+  // Here we only perform idempotent enrichment.
+  const { error: enrichError } = await adminClient
     .from("users")
-    .select("id")
-    .eq("id", data.user.id)
-    .single();
-
-  if (!existingProfile) {
-    // Create user profile for first-time OAuth login
-    const { error: insertError } = await adminClient.from("users").insert({
-      id: data.user.id,
-      email: data.user.email!,
+    .update({
+      email: data.user.email ?? undefined,
       display_name: data.user.user_metadata?.full_name ?? null,
-      plan: "free",
-      pdf_export_count: 0,
-      is_admin: false,
-    });
+    })
+    .eq("id", data.user.id);
 
-    if (insertError) {
-      console.error("[auth/callback] Failed to create user profile:", insertError.message);
-      return NextResponse.redirect(`${origin}/login?error=profile_creation_failed`);
-    }
-
-    // Redirect new users to onboarding
-    return NextResponse.redirect(`${origin}/onboarding`);
+  if (enrichError) {
+    console.error("[auth/callback] Failed to enrich profile:", enrichError.message);
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return NextResponse.redirect(`${origin}${safeNext}`);
 }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createServerClientInstance } from "@/lib/supabase/server";
+import { z } from "zod";
 
 /**
  * GET /api/v1/alerts — paginated alert list.
@@ -13,9 +14,18 @@ import { createAdminClient } from "@/lib/supabase/server";
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const cursor = searchParams.get("cursor");
-  const limitParam = parseInt(searchParams.get("limit") ?? "20");
-  const limit = Math.min(Math.max(limitParam, 1), 100);
+  const parsed = z.object({
+    cursor: z.string().uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+  }).safeParse({
+    cursor: searchParams.get("cursor") ?? undefined,
+    limit: searchParams.get("limit") ?? undefined,
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid query", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const cursor = parsed.data.cursor ?? null;
+  const limit = parsed.data.limit ?? 20;
 
   let user = null;
   try {
@@ -24,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Unauthenticated — public access
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
   let query = supabase
     .from("alerts")
     .select(

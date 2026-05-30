@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/server";
+import type { NextRequest } from "next/server";
+import { requireRecentAuth } from "@/lib/auth/session";
+import { createAdminClient, createServerClientInstance } from "@/lib/supabase/server";
+import { isSameOriginMutation } from "@/lib/utils/security";
 
 /**
  * POST /api/v1/account/delete — soft-deletes the authenticated user's account.
@@ -8,19 +10,21 @@ import { createAdminClient } from "@/lib/supabase/server";
  * Hard-delete after 30 days is handled by a scheduled DB job / manual admin process.
  * The user's session is invalidated immediately after soft-delete.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let user;
   try {
-    user = await requireAuth();
+    user = await requireRecentAuth();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createServerClientInstance();
 
-  // Soft-delete: set deleted_at to now
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from("users")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", user.id);
@@ -30,9 +34,8 @@ export async function POST() {
     return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
   }
 
-  // Revoke all active sessions by signing out globally
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (supabase as any).auth.admin.signOut(user.id, "global").catch((e: Error) =>
+  // Needs admin API for global sign-out.
+  await createAdminClient().auth.admin.signOut(user.id, "global").catch((e: Error) =>
     console.error("[account/delete] Failed to revoke sessions:", e),
   );
 
